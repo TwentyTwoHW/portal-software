@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "emulator",
+    "gui",
+    "model",
+    "dummy-uniffi",
+    "fetch-git-hash",
+    "sdk",
+    "functional-test-wrapper",
+]
+exclude = [
+    # Sigh
+    "firmware",
+]

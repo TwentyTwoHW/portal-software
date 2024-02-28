@@ -1,0 +1,78 @@
+[package]
+name = "firmware"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+rtic = { version = "2.0", features = ["thumbv7-backend"] }
+rtic-sync = "1.0"
+rtic-monotonics = { version = "1.0", features = ["cortex-m-systick"] }
+critical-section = "1.1"
+cortex-m = { version = "^0.7.7", features = ["critical-section-single-core"] }
+# set-vtor: set vector table to the flash address rather than relying
+#   on the default value of 0x0 which is fine when booting from bank 1
+#   (because memory is aliased) but would break with bank 2
+cortex-m-rt = { version = "0.7.2", features = ["set-vtor"] }
+embedded-alloc = "0.5"
+embedded-hal = "0.2.7"
+display-interface = "^0.4.1"
+ssd1306 = "0.8"
+minicbor = { version = "0.20", default-features = false, features = ["alloc"] }
+rand = { version = "0.8", default-features = false }
+rand_chacha = { version = "0.3", default-features = false }
+log = "0.4"
+futures = { version = "0.3", default-features = false, features = ["async-await"] }
+# bitcoin = { version = "0.30", default-features = false, features = ["no-std"] }
+bdk = { git = "https://github.com/afilini/bdk.git", rev = "ea20dff9fadcf75b5b3c7520e0b3fa40a71d3b64", default-features = false, features = ["keys-bip39"] }
+bitcoin_hashes = { version = "0.11.0", default-features = false, features = ["small-hash"] }
+secp256k1 = { version = "0.24.3", default-features = false, features = ["alloc", "lowmemory"] }
+fetch-git-hash = { path = "../fetch-git-hash" }
+
+model = { path = "../model", features = ["stm32"] }
+gui = { path = "../gui", features = ["stm32"] }
+
+rtt-target = { version = "0.4", optional = true }
+rtt-log = { version = "0.2", optional = true }
+stm32l4xx-hal = { version = "0.7.1", features = ["stm32l476", "rt"], optional = true }
+
+# panic-probe = { version = "0.2", features = ["print-rtt"], optional = true }
+cortex-m-semihosting = { version = "0.3.5", optional = true }
+cortex-m-log = { version = "0.8", features = ["log-integration", "semihosting"], optional = true}
+# panic-semihosting = { version = "0.6", optional = true }
+stm32f4xx-hal = { version = "0.16.2", features = ["stm32f405"], optional = true }
+embedded-graphics-core = { version = "0.4", optional = true }
+
+[features]
+default = ["emulator", "panic-log"]
+emulator = ["cortex-m-semihosting", "cortex-m-log", "stm32f4xx-hal", "embedded-graphics-core", "model/emulator", "panic-log"] # "panic-semihosting", "panic-semihosting/exit"
+emulator-fast-ticks = []
+device = ["rtt-target", "rtt-log", "stm32l4xx-hal"] # "panic-probe"
+trace_memory = []
+panic-log = []
+
+[profile.dev]
+opt-level = "z"
+panic = "abort"
+lto = true
+codegen-units = 1
+
+# Don't optimize the `cortex-m-rt` crate
+# [profile.dev.package.cortex-m-rt]
+# opt-level = 0
+# Optimize all the other dependencies
+[profile.dev.package."*"]
+debug = true
+
+[profile.release]
+opt-level = "z"
+panic = "abort"
+lto = true
+codegen-units = 1
+debug = true
+
+[profile.emulator-fast-ticks]
+inherits = "release"
+
+[patch.crates-io]
+bitcoin_hashes = { git = "https://github.com/afilini/bitcoin_hashes.git", rev = "09580b264184da514ccc1954c768530132753b8d" }

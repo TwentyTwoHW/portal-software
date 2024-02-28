@@ -1,0 +1,34 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "cortex-debug",
+            "request": "attach",
+            "name": "Attach (OpenOCD)",
+            "servertype": "openocd",
+            "cwd": "${workspaceRoot}/firmware",
+            "executable": "./target/thumbv7em-none-eabihf/release/firmware",
+            "device": "STM32L476RGT6",
+            "configFiles": [
+                "interface/stlink.cfg",
+                "target/stm32l4x.cfg"
+            ],
+            "debuggerArgs": ["-nh"],
+            "gdbPath": "rust-gdb",
+            "objdumpPath": "objdump",
+            "svdFile": "${workspaceRoot}/.vscode/STM32L476.svd",
+            "rttConfig": {
+                "enabled": true,
+                "address": "auto",
+                "polling_interval": 10,
+                "decoders": [
+                    {
+                        "label": "RTT",
+                        "port": 0,
+                        "type": "console"
+                    }
+                ]
+            }
+        }
+    ]
+}

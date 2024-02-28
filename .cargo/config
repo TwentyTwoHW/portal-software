@@ -1,0 +1,6 @@
+[alias]
+emu = "run --package emulator --"
+emu-dev = "run --package emulator -- --join-logs --listen-gdb 3333"
+emu-dev-wait = "run --package emulator -- --join-logs --listen-gdb 3333 --wait-gdb"
+emu-test = "test --package emulator --no-default-features"
+gui-sim = "run --package gui --features simulator --bin simulator --"

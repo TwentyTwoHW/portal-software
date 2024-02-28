@@ -1,0 +1,120 @@
+name: "Continuous Integration"
+on:
+  pull_request:
+  push:
+jobs:
+  host-packages:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: cachix/install-nix-action@v22
+      with:
+        nix_path: nixpkgs=channel:nixos-unstable
+    - name: Print nixpkgs version
+      run: nix-instantiate --eval -E '(import <nixpkgs> {}).lib.version'
+    - uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ./target
+          ./firmware/target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - run: nix-shell --arg withEmbedded false --run "cargo build --package emulator"
+    - run: nix-shell --arg withEmbedded false --run "cargo build --package model"
+    - run: nix-shell --arg withEmbedded false --run "cargo build --package gui"
+    - run: nix-shell --arg withEmbedded false --run "cargo build --package sdk"
+
+  android-bindings:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: cachix/install-nix-action@v22
+      with:
+        nix_path: nixpkgs=channel:nixos-unstable
+    - name: Print nixpkgs version
+      run: nix-instantiate --eval -E '(import <nixpkgs> {}).lib.version'
+    - uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ./target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-android
+    - run: nix-shell --arg fullAndroid true --arg withEmbedded false --run "cd ./sdk/libportal-android && ./gradlew publishToMavenLocal --exclude-task signMavenPublication"
+    - uses: actions/upload-artifact@v2
+      with:
+        name: local-maven
+        path: ~/.m2/repository/xyz/twenty_two/libportal-android/
+
+  ios-bindings:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: cachix/install-nix-action@v22
+      with:
+        nix_path: nixpkgs=channel:nixos-unstable
+    - name: Print nixpkgs version
+      run: nix-instantiate --eval -E '(import <nixpkgs> {}).lib.version'
+    - uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ./target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-ios
+    - run: nix-shell --arg withIos true --arg withEmbedded false --run "cd ./sdk/libportal-ios && PACKAGE=1 ./build-local-swift.sh"
+    - uses: actions/upload-artifact@v2
+      with:
+        name: portalffi-framework
+        path: ./sdk/libportal-ios/portalFFI.xcframework.zip
+
+  build-firmware-device:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: cachix/install-nix-action@v22
+      with:
+        nix_path: nixpkgs=channel:nixos-unstable
+    - name: Print nixpkgs version
+      run: nix-instantiate --eval -E '(import <nixpkgs> {}).lib.version'
+    - uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ./target
+          ./firmware/target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - run: nix-shell --run "cd firmware && cargo build --no-default-features --features device --release"
+    - uses: actions/upload-artifact@v2
+      with:
+        name: firmware
+        path: ./firmware/target/thumbv7em-none-eabihf/release/firmware
+
+  run-firmware-tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: cachix/install-nix-action@v22
+      with:
+        nix_path: nixpkgs=channel:nixos-unstable
+    - uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ./target
+          ./firmware/target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-fw-test
+    - run: nix-shell --run "cd firmware && cargo build --no-default-features --features emulator,emulator-fast-ticks --profile=emulator-fast-ticks"
+    - run: nix-shell --run "cargo build --package emulator --no-default-features"
+    - run: nix-shell --run "REPORT_TMP_DIR=/tmp/portal-test-report RUST_LOG=emulator=trace cargo emu-test -- --nocapture --test-threads 1"
+      timeout-minutes: 10
+    - uses: actions/upload-artifact@v2
+      if: always()
+      with:
+        name: test-report
+        path: /tmp/portal-test-report
+
+   

@@ -1,0 +1,129 @@
+# data file for the Fltk User Interface Designer (fluid)
+version 1.0308
+header_name {.h}
+code_name {.cxx}
+class Emulator {open
+} {
+  Function {make_window()} {open
+  } {
+    Fl_Window window {
+      label Emulator open
+      xywh {1162 204 565 985} type Double size_range {561 1020 561 0} visible
+    } {
+      Fl_Box display {
+        xywh {25 25 511 255} labeltype NO_LABEL
+      }
+      Fl_Pack main_pack {open
+        xywh {25 305 511 365}
+        code0 {main_pack.set_spacing(5);}
+      } {
+        Fl_Pack inner_pack_1 {open
+          xywh {30 300 511 35} type HORIZONTAL labeltype NO_LABEL
+          code0 {inner_pack_1.set_spacing(5);}
+        } {
+          Fl_Choice num_words {open
+            xywh {35 305 150 35} down_box BORDER_BOX textfont 4
+            code0 {let num_words = num_words.with_id("num_words");}
+          } {}
+          Fl_Input generate_mnemonic_password {
+            xywh {35 430 180 35} textfont 4
+            code0 { let generate_mnemonic_password = generate_mnemonic_password.with_id("generate_mnemonic_password"); }
+          }
+          Fl_Button generate_mnemonic_btn {
+            label GenerateMnemonic
+            xywh {285 305 176 35}
+          }
+        }
+        Fl_Pack inner_pack_4 {open
+          xywh {35 405 525 35} type HORIZONTAL
+          code0 {inner_pack_4.set_spacing(5);}
+        } {
+          Fl_Input restore_mnemonic {
+            xywh {35 430 256 35} textfont 4
+            code0 {let restore_mnemonic = restore_mnemonic.with_id("restore_mnemonic");}
+          }
+          Fl_Input restore_mnemonic_password {
+            xywh {35 430 150 35} textfont 4
+            code0 { let restore_mnemonic_password = restore_mnemonic_password.with_id("restore_mnemonic_password"); }
+          }
+          Fl_Button restore_mnemonic_btn {
+            label Restore
+            xywh {300 430 100 35}
+          }
+        }
+        Fl_Pack inner_pack_7 {open
+          xywh {35 405 525 35} type HORIZONTAL
+          code0 {inner_pack_7.set_spacing(5);}
+        } {
+          Fl_Input unlock_pwd {
+            xywh {35 430 357 35} textfont 4
+            code0 {let unlock_pwd = unlock_pwd.with_id("unlock_pwd");}
+          }
+          Fl_Button unlock_pwd_btn {
+            label Unlock
+            xywh {300 430 150 35}
+          }
+        }
+        Fl_Button get_info_btn {
+          label GetInfo
+          xywh {305 365 511 35}
+        }
+        Fl_Button public_descriptor_btn {
+          label PublicDescriptor
+          xywh {305 365 511 35}
+        }
+        Fl_Pack inner_pack_3 {open
+          xywh {35 405 525 35} type HORIZONTAL
+          code0 {inner_pack_3.set_spacing(5);}
+        } {
+          Fl_Input display_address_num {
+            xywh {35 430 356 35} textfont 4
+            code0 {let display_address_num = display_address_num.with_id("display_address_num");}
+          }
+          Fl_Button display_address_btn {
+            label DisplayAddress
+            xywh {300 430 150 35}
+          }
+        }
+        Fl_Pack inner_pack_5 {open
+          xywh {35 405 525 35} type HORIZONTAL
+          code0 {inner_pack_5.set_spacing(5);}
+        } {
+          Fl_Input sign_psbt {
+            xywh {35 430 356 35} textfont 4
+            code0 {let sign_psbt = sign_psbt.with_id("sign_psbt");}
+          }
+          Fl_Button sign_psbt_btn {
+            label SignPsbt
+            xywh {300 430 150 35}
+          }
+        }
+        Fl_Pack inner_pack_6 {open
+          xywh {35 405 525 35} type HORIZONTAL
+          code0 {inner_pack_6.set_spacing(5);}
+        } {
+          Fl_Input fw_path {
+            xywh {35 430 356 35} textfont 4
+            code0 {let fw_path = fw_path.with_id("fw_path");}
+          }
+          Fl_Button fw_path_btn {
+            label FwUpdate
+            xywh {300 430 150 35}
+          }
+        }
+        Fl_Button resume_btn {
+          label Resume
+          xywh {315 375 511 35}
+        }
+        Fl_Button reset_btn {
+          label Reset
+          xywh {315 375 511 35}
+        }
+      }
+      Fl_Text_Display console {selected
+        xywh {25 725 511 270} labeltype NO_LABEL textfont 4
+        code0 {console.set_buffer(text::TextBuffer::default());}
+      }
+    }
+  }
+}

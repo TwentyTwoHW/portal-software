@@ -1,0 +1,6 @@
+framework module portalFFI {
+  umbrella header "portalFFI-umbrella.h"
+
+  export *
+  module * { export * }
+}

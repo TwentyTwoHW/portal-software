@@ -1,0 +1,6 @@
+/target
+*.swp
+
+.DS_Store
+
+/firmware/serial1.socket

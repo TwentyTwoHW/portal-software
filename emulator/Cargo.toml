@@ -1,0 +1,42 @@
+[package]
+name = "emulator"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+embedded-graphics = "0.8"
+embedded-graphics-simulator = { version = "0.5", default-features = false }
+image = "0.23.14"
+base64 = "0.13.0"
+serde_json = "1.0"
+serde = "1.0"
+clap = { version = "4.3.19", features = ["derive"] }
+log = "0.4"
+env_logger = "0.10"
+tempdir = "0.3.7"
+handlebars = "4.3.7"
+rand = "0.8.5"
+tokio = { version = "1.36", features = ["full"] }
+futures = "0.3"
+
+sdk = { path = "../sdk", features = ["debug"] }
+model = { path = "../model", features = ["emulator-std"] }
+
+fltk = { version = "^1.4", optional = true }
+
+[build-dependencies]
+fl2rust = { version = "0.4", optional = true }
+
+[dev-dependencies]
+functional-test-wrapper = { path = "../functional-test-wrapper" }
+
+[features]
+default = ["gui"]
+gui = ["fltk", "fl2rust"]
+
+[[bin]]
+name = "gui"
+required-features = ["gui"]

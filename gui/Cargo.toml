@@ -1,0 +1,21 @@
+[package]
+name = "gui"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+embedded-graphics = "0.8"
+embedded-graphics-simulator = { version = "0.5", optional = true }
+
+model = { path = "../model", features = ["stm32"] }
+
+[features]
+stm32 = ["model/stm32"]
+simulator = ["embedded-graphics-simulator"]
+
+[[bin]]
+name = "simulator"
+required-features = ["simulator"]

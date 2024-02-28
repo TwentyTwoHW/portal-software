@@ -1,0 +1,26 @@
+[build]
+# Instruction set of Cortex-M4 w/ FPU
+target = "thumbv7em-none-eabihf"
+
+rustflags = [
+  # use the Tlink.x scrip from the cortex-m-rt crate
+  "-C", "link-arg=-Tlink.x",
+  # Use v0 symbol mangling style (https://rust-lang.github.io/rfcs/2603-rust-symbol-name-mangling-v0.html). This allows recovering the full monomorphized type from the symbol name
+  "-C", "symbol-mangling-version=v0"
+]
+
+# Doesn't seem to work but let's keep it here so we can find it when needed
+[target.'cfg(feature = "device")']
+runner = "probe-run --chip STM32L476RG"
+
+[target.thumbv7em-none-eabihf]
+runner = "qemu-system-arm -display none -monitor none -gdb tcp::3333 -cpu cortex-m4 -machine netduinoplus2 -semihosting-config enable=on,target=auto -chardev socket,path=serial1.socket,server=on,wait=off,id=serial1 -serial chardev:serial1 -kernel"
+
+[alias]
+run-wait-gdb = "run -- -S"
+
+# [unstable]
+# Rebuild std from scratch
+# build-std = ["std", "panic_abort"]
+# Do not store panic strings
+# build-std-features = ["panic_immediate_abort"]
