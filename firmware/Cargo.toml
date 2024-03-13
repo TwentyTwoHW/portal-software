@@ -23,9 +23,9 @@ rand_chacha = { version = "0.3", default-features = false }
 log = "0.4"
 futures = { version = "0.3", default-features = false, features = ["async-await"] }
 # bitcoin = { version = "0.30", default-features = false, features = ["no-std"] }
-bdk = { git = "https://github.com/afilini/bdk.git", rev = "ea20dff9fadcf75b5b3c7520e0b3fa40a71d3b64", default-features = false, features = ["keys-bip39"] }
-bitcoin_hashes = { version = "0.11.0", default-features = false, features = ["small-hash"] }
-secp256k1 = { version = "0.24.3", default-features = false, features = ["alloc", "lowmemory"] }
+bdk = { git = "https://github.com/afilini/bdk.git", rev = "6266d8ee1bd68b96039b13a1ae673fbc8a57fdc9", default-features = false, features = ["keys-bip39"] }
+bitcoin_hashes = { version = "0.12.0", default-features = false, features = ["small-hash"] }
+secp256k1 = { version = "0.27.0", default-features = false, features = ["alloc", "lowmemory"] }
 fetch-git-hash = { path = "../fetch-git-hash" }
 
 model = { path = "../model", features = ["stm32"] }
@@ -77,4 +77,5 @@ debug = true
 inherits = "release"
 
 [patch.crates-io]
-bitcoin_hashes = { git = "https://github.com/afilini/bitcoin_hashes.git", rev = "09580b264184da514ccc1954c768530132753b8d" }
+bitcoin_hashes = { git = "https://github.com/afilini/rust-bitcoin.git", rev = "4ade866918522ab6c33950a9941e6fee8ed24ec4" }
+bip39 = { git = "https://github.com/rust-bitcoin/rust-bip39.git", rev = "a84eb0012e7caaef8f82a66de0da00b31d007725" } # current latest releases uses bitcoin_hashes v0.11

@@ -1,17 +1,17 @@
 // Portal Hardware Wallet firmware and supporting software libraries
-// 
+//
 // Copyright (C) 2024 Alekos Filini
-// 
+//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -22,13 +22,12 @@ use alloc::vec::Vec;
 
 use futures::prelude::*;
 
-use bdk::bitcoin::util::{bip32, psbt, taproot};
-use bdk::bitcoin::{Address, Amount, PublicKey, TxOut, XOnlyPublicKey};
-use bdk::descriptor::{
-    DerivedDescriptor, DescriptorError, DescriptorXKey, ExtendedDescriptor, TapKeyOrigins, Wildcard,
-};
+use bdk::bitcoin::key::XOnlyPublicKey;
+use bdk::bitcoin::{bip32, psbt, taproot};
+use bdk::bitcoin::{Address, Amount, PublicKey, TxOut};
+use bdk::descriptor::{DerivedDescriptor, DescriptorError, ExtendedDescriptor, TapKeyOrigins};
 use bdk::keys::SinglePubKey;
-use bdk::miniscript::descriptor::{DescriptorType, InnerXKey};
+use bdk::miniscript::descriptor::{DescriptorType, DescriptorXKey, InnerXKey, Wildcard};
 use bdk::miniscript::{DescriptorPublicKey, ForEachKey};
 use bdk::HdKeyPaths;
 
@@ -95,8 +94,7 @@ pub async fn handle_sign_request(
         .await
         .unwrap();
 
-    let mut psbt: psbt::PartiallySignedTransaction =
-        bdk::bitcoin::consensus::encode::deserialize(&psbt).unwrap();
+    let mut psbt = psbt::PartiallySignedTransaction::deserialize(&psbt).unwrap();
 
     let allow_witness_utxo = matches!(
         wallet
@@ -188,14 +186,14 @@ pub async fn handle_sign_request(
     let empty_tx = bdk::bitcoin::Transaction {
         input: alloc::vec![bdk::bitcoin::TxIn::default(); diff.len()],
         output: alloc::vec![],
-        lock_time: bdk::bitcoin::PackedLockTime::ZERO,
+        lock_time: bdk::bitcoin::locktime::absolute::LockTime::ZERO,
         version: 0,
     };
     let mut empty_psbt =
         psbt::PartiallySignedTransaction::from_unsigned_tx(empty_tx).expect("Always succeed");
     empty_psbt.inputs = diff;
 
-    let psbt = bdk::bitcoin::consensus::encode::serialize(&empty_psbt);
+    let psbt = empty_psbt.serialize();
 
     peripherals
         .nfc
@@ -479,7 +477,7 @@ impl DescriptorMeta for ExtendedDescriptor {
             false
         });
 
-        path_found.map(|path| self.at_derivation_index(path))
+        path_found.map(|path| self.at_derivation_index(path).expect("Able to derive"))
     }
 
     fn derive_from_hd_keypaths<'s>(
@@ -531,7 +529,7 @@ impl DescriptorMeta for ExtendedDescriptor {
             return None;
         }
 
-        let descriptor = self.at_derivation_index(0);
+        let descriptor = self.at_derivation_index(0).expect("Able to derive");
         match descriptor.desc_type() {
             // TODO: add pk() here
             DescriptorType::Pkh

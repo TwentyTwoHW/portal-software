@@ -1,17 +1,17 @@
 // Portal Hardware Wallet firmware and supporting software libraries
-// 
+//
 // Copyright (C) 2024 Alekos Filini
-// 
+//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -239,30 +239,29 @@ impl PortalSdk {
     pub async fn display_address(&self, index: u32) -> Result<model::bitcoin::Address, SdkError> {
         let address = send_with_retry!(self.requests, Request::DisplayAddress(index), Ok(Reply::Address(s)) => break Ok(s))?;
         let address = address
-            .parse()
-            .map_err(|_| SdkError::DeserializationError)?;
+            .parse::<model::bitcoin::Address<model::bitcoin::address::NetworkUnchecked>>()
+            .map_err(|_| SdkError::DeserializationError)?
+            .assume_checked();
         Ok(address)
     }
 
     pub async fn sign_psbt(&self, psbt: String) -> Result<String, SdkError> {
-        use model::bitcoin::consensus::{deserialize, serialize};
-
         let psbt = base64::decode(&psbt)?;
-        let mut original_psbt: model::bitcoin::util::psbt::Psbt =
-            deserialize(&psbt).map_err(|_| SdkError::DeserializationError)?;
+        let mut original_psbt = model::bitcoin::psbt::Psbt::deserialize(&psbt)
+            .map_err(|_| SdkError::DeserializationError)?;
 
         send_with_retry!(self.requests, Request::BeginSignPsbt, Ok(Reply::Ok) => break Ok(()))?;
 
         let psbt = send_with_retry!(self.requests, Request::SignPsbt(psbt.clone().into()), Ok(Reply::SignedPsbt(s)) => break Ok(s))?;
 
-        let mut psbt: model::bitcoin::util::psbt::Psbt =
-            deserialize(psbt.deref()).map_err(|_| SdkError::CommunicationError)?;
+        let mut psbt = model::bitcoin::psbt::Psbt::deserialize(psbt.deref())
+            .map_err(|_| SdkError::CommunicationError)?;
         psbt.unsigned_tx = original_psbt.unsigned_tx.clone();
 
         original_psbt
             .combine(psbt)
             .map_err(|_| SdkError::DeserializationError)?;
-        let original_psbt = serialize(&original_psbt);
+        let original_psbt = original_psbt.serialize();
 
         Ok(base64::encode(&original_psbt))
     }
@@ -316,7 +315,7 @@ impl PortalSdk {
             variant: model::FwVariant::VANILLA,
             signature: Box::new(signature.into()),
             size: binary.len(),
-            first_page_midstate: Box::new(first_page_midstate.into_inner().into()),
+            first_page_midstate: Box::new(first_page_midstate.to_byte_array().into()),
         };
 
         let mut page = send_with_retry!(self.requests, model::Request::BeginFwUpdate(header.clone()), Ok(Reply::NextPage(page)) => break Ok(Some(page)), Ok(Reply::Ok) => break Ok(None))?;
@@ -556,13 +555,32 @@ impl From<base64::DecodeError> for SdkError {
 mod ffi {
     use std::str::FromStr;
 
+    use model::bitcoin::address::NetworkUnchecked;
+
     use super::*;
 
-    impl<T: FromStr + ToString> UniffiCustomTypeConverter for T {
+    trait MyFromStr: Sized {
+        fn parse(s: &str) -> uniffi::Result<Self>;
+    }
+
+    impl MyFromStr for Network {
+        fn parse(s: &str) -> uniffi::Result<Self> {
+            Self::from_str(&s).map_err(|_| uniffi::deps::anyhow::Error::msg("Invalid string"))
+        }
+    }
+    impl MyFromStr for Address {
+        fn parse(s: &str) -> uniffi::Result<Self> {
+            Ok(Address::<NetworkUnchecked>::from_str(&s)
+                .map_err(|_| uniffi::deps::anyhow::Error::msg("Invalid address"))?
+                .assume_checked())
+        }
+    }
+
+    impl<T: MyFromStr + ToString> UniffiCustomTypeConverter for T {
         type Builtin = String;
 
         fn into_custom(val: Self::Builtin) -> uniffi::Result<Self> {
-            T::from_str(&val).map_err(|_| uniffi::deps::anyhow::Error::msg("Invalid string"))
+            T::parse(&val)
         }
 
         fn from_custom(obj: Self) -> Self::Builtin {
