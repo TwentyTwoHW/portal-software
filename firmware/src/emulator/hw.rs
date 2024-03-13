@@ -80,7 +80,7 @@ pub fn init_peripherals(
             &clocks,
         )
         .unwrap();
-    serial.listen(serial::Event::Rxne);
+    serial.listen(serial::Event::RxNotEmpty);
     set_serial(serial);
 
     let (nfc, nfc_interrupt, nfc_finished) = NfcIc::new();

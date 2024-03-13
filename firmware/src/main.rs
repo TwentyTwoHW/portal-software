@@ -19,12 +19,14 @@
 #![no_main]
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
-#![feature(type_alias_impl_trait)]
-#![feature(unboxed_closures)]
 
 extern crate alloc;
 extern crate cortex_m;
-extern crate embedded_hal as ehal;
+
+#[cfg(feature = "device")]
+extern crate embedded_hal_02 as ehal;
+#[cfg(feature = "emulator")]
+extern crate embedded_hal_1 as ehal;
 
 #[cfg(all(feature = "device", feature = "emulator"))]
 compile_error!("Cannot enable both the `device` and `emulator` features at the same time");
@@ -181,6 +183,7 @@ mod app {
         // TODO: move this somewhere else
         dp.RCC.apb2enr.write(|w| w.syscfgen().set_bit());
 
+        #[allow(unused_mut)]
         let (mut nfc, nfc_interrupt, nfc_finished, display, tsc, rng, flash) =
             hw::init_peripherals(dp, cp).unwrap();
 

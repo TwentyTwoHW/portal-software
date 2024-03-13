@@ -30,8 +30,8 @@ use minicbor::{Decode, Encode};
 
 use noise_protocol::{Cipher, CipherState};
 
-use aes_gcm::aead::Aead;
-use aes_gcm::{Aes256Gcm, Key, NewAead, Nonce};
+use aes_gcm::aead::AeadMut;
+use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 
 use modular_bitfield::prelude::*;
 
@@ -355,12 +355,10 @@ impl InitializedConfig {
             MaybeEncrypted::Encrypted { data, nonce } => {
                 let mut hash = sha256::Hash::hash(password.as_bytes());
                 for _ in 0..DEFAULT_PASSWORD_ITERATIONS {
-                    hash = sha256::Hash::hash(&hash);
+                    hash = sha256::Hash::hash(hash.as_ref());
                 }
 
-                let key = hash.into_inner();
-                let key = Key::from_slice(&key);
-                let cipher = Aes256Gcm::new(key);
+                let mut cipher = Aes256Gcm::new_from_slice(hash.as_ref()).expect("Correct length");
 
                 let mut nonce_bytes = [0; 12];
                 nonce_bytes[..4].copy_from_slice(&nonce.to_be_bytes());
@@ -401,12 +399,10 @@ impl UnlockedConfig {
             Some(password) => {
                 let mut hash = sha256::Hash::hash(password.as_bytes());
                 for _ in 0..DEFAULT_PASSWORD_ITERATIONS {
-                    hash = sha256::Hash::hash(&hash);
+                    hash = sha256::Hash::hash(hash.as_ref());
                 }
 
-                let key = hash.into_inner();
-                let key = Key::from_slice(&key);
-                let cipher = Aes256Gcm::new(key);
+                let mut cipher = Aes256Gcm::new_from_slice(hash.as_ref()).expect("Correct length");
 
                 let nonce = self.nonce + 1;
                 let mut nonce_bytes = [0; 12];

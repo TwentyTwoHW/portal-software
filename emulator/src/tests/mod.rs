@@ -139,8 +139,7 @@ async fn run_script(
                     }
 
                     let actual_fb = emulator.display.to_rgb_output_image(&output_settings);
-                    if actual_fb.as_image_buffer().as_raw().deref() == expected_fb.as_raw().deref()
-                    {
+                    if actual_fb.as_image_buffer().as_raw() == &expected_fb.as_raw().deref() {
                         break None;
                     }
 

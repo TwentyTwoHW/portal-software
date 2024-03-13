@@ -30,7 +30,7 @@ This command should first compile the emulator, then the firmware, and then laun
 
 The dependencies you'll need are:
 
-* **nightly** `cargo` with both the native (local) and `thumbv7em-none-eabihf` targets installed
+* `cargo` (ideally >= 1.76) with both the native (local) and `thumbv7em-none-eabihf` targets installed
 * The C toolchain for ARM-v7 (`arm-none-eabi-*`)
 * `qemu-system-arm` to emulate the firmware
 * FLTK to run the emulator GUI
