@@ -1,17 +1,17 @@
 // Portal Hardware Wallet firmware and supporting software libraries
-// 
+//
 // Copyright (C) 2024 Alekos Filini
-// 
+//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -30,14 +30,14 @@ use minicbor::{Decode, Encode};
 
 use noise_protocol::{Cipher, CipherState};
 
-use aes_gcm::aead::Aead;
-use aes_gcm::{Aes256Gcm, Key, NewAead, Nonce};
+use aes_gcm::aead::AeadMut;
+use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 
 use modular_bitfield::prelude::*;
 
 pub use bitcoin;
+use bitcoin::bip32;
 use bitcoin::hashes::{sha256, Hash, HashEngine};
-use bitcoin::util::bip32;
 
 pub const MAX_FRAGMENT_LEN: usize = 64;
 
@@ -264,7 +264,7 @@ pub struct SerializedXprv {
     pub bytes: [u8; 78],
 }
 impl SerializedXprv {
-    pub fn as_xprv(&self) -> Result<bip32::ExtendedPrivKey, bitcoin::util::bip32::Error> {
+    pub fn as_xprv(&self) -> Result<bip32::ExtendedPrivKey, bitcoin::bip32::Error> {
         bip32::ExtendedPrivKey::decode(&self.bytes)
     }
 }
@@ -355,12 +355,10 @@ impl InitializedConfig {
             MaybeEncrypted::Encrypted { data, nonce } => {
                 let mut hash = sha256::Hash::hash(password.as_bytes());
                 for _ in 0..DEFAULT_PASSWORD_ITERATIONS {
-                    hash = sha256::Hash::hash(&hash);
+                    hash = sha256::Hash::hash(hash.as_ref());
                 }
 
-                let key = hash.into_inner();
-                let key = Key::from_slice(&key);
-                let cipher = Aes256Gcm::new(key);
+                let mut cipher = Aes256Gcm::new_from_slice(hash.as_ref()).expect("Correct length");
 
                 let mut nonce_bytes = [0; 12];
                 nonce_bytes[..4].copy_from_slice(&nonce.to_be_bytes());
@@ -401,12 +399,10 @@ impl UnlockedConfig {
             Some(password) => {
                 let mut hash = sha256::Hash::hash(password.as_bytes());
                 for _ in 0..DEFAULT_PASSWORD_ITERATIONS {
-                    hash = sha256::Hash::hash(&hash);
+                    hash = sha256::Hash::hash(hash.as_ref());
                 }
 
-                let key = hash.into_inner();
-                let key = Key::from_slice(&key);
-                let cipher = Aes256Gcm::new(key);
+                let mut cipher = Aes256Gcm::new_from_slice(hash.as_ref()).expect("Correct length");
 
                 let nonce = self.nonce + 1;
                 let mut nonce_bytes = [0; 12];
@@ -479,11 +475,11 @@ impl Password {
 
         let mut hash = sha256::Hash::from_engine(hash);
         for _ in 0..DEFAULT_PASSWORD_ITERATIONS {
-            hash = sha256::Hash::hash(&hash);
+            hash = sha256::Hash::hash(hash.as_ref());
         }
 
         Password {
-            hash: hash.into_inner(),
+            hash: *hash.as_byte_array(),
             salt,
             iterations: DEFAULT_PASSWORD_ITERATIONS,
         }
