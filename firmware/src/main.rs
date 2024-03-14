@@ -1,17 +1,17 @@
 // Portal Hardware Wallet firmware and supporting software libraries
-// 
+//
 // Copyright (C) 2024 Alekos Filini
-// 
+//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -19,12 +19,14 @@
 #![no_main]
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
-#![feature(type_alias_impl_trait)]
-#![feature(unboxed_closures)]
 
 extern crate alloc;
 extern crate cortex_m;
-extern crate embedded_hal as ehal;
+
+#[cfg(feature = "device")]
+extern crate embedded_hal_02 as ehal;
+#[cfg(feature = "emulator")]
+extern crate embedded_hal_1 as ehal;
 
 #[cfg(all(feature = "device", feature = "emulator"))]
 compile_error!("Cannot enable both the `device` and `emulator` features at the same time");
@@ -181,6 +183,7 @@ mod app {
         // TODO: move this somewhere else
         dp.RCC.apb2enr.write(|w| w.syscfgen().set_bit());
 
+        #[allow(unused_mut)]
         let (mut nfc, nfc_interrupt, nfc_finished, display, tsc, rng, flash) =
             hw::init_peripherals(dp, cp).unwrap();
 

@@ -9,8 +9,8 @@ let
   rust_overlay = import (builtins.fetchTarball "https://github.com/oxalica/rust-overlay/archive/master.tar.gz");
   pkgs = import <nixpkgs> { overlays = [ rust_overlay ]; config.android_sdk.accept_license = true; config.allowUnfree = true; };
   lib = pkgs.lib;
-  rustVersion = "2023-07-07";
-  rust = pkgs.rust-bin.nightly.${rustVersion}.default.override {
+  rustVersion = "1.76.0";
+  rust = pkgs.rust-bin.stable.${rustVersion}.default.override {
     extensions = [
       "rust-src" # for rust-analyzer
     ];
@@ -81,7 +81,7 @@ pkgs.mkShell rec {
     pkgs.libusb
     rust
   ]
-    ++ lib.optionals withEmbedded (with pkgs; [ probe-run gcc-arm-embedded qemu gdb openocd hal clang ])
+    ++ lib.optionals withEmbedded (with pkgs; [ probe-rs gcc-arm-embedded qemu gdb openocd hal clang ])
     ++ lib.optionals withAndroid (with pkgs; [ cargo-ndk jdk ]);
 
   RUST_BACKTRACE = 1;

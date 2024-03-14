@@ -1,21 +1,19 @@
 // Portal Hardware Wallet firmware and supporting software libraries
-// 
+//
 // Copyright (C) 2024 Alekos Filini
-// 
+//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-use core::future::IntoFuture;
 
 use hal::gpio;
 use hal::i2c::{self, I2c};
@@ -206,12 +204,17 @@ where
         Ok(fragment)
     }
 
-    async fn wait_for<F>(&mut self, func: F, mode: WaitMode) -> Result<(), Error>
-    where
-        for<'a> F: Fn<(&'a mut Self,)> + 'a,
-        for<'a> <F as FnOnce<(&'a mut Self,)>>::Output: IntoFuture<Output = Result<bool, Error>>,
-    {
-        while !func(self).await? {
+    async fn wait_for(&mut self, what: WaitFor, mode: WaitMode) -> Result<(), Error> {
+        macro_rules! do_wait {
+            ($s:expr, $what:expr) => {
+                match $what {
+                    WaitFor::Read => $s.check_rf_read().await,
+                    WaitFor::Write => $s.check_rf_write().await,
+                }
+            };
+        }
+
+        while !do_wait!(self, what)? {
             match mode {
                 #[allow(deprecated)]
                 WaitMode::Delay { ms } => Systick::delay(ms.millis()).await,
@@ -282,7 +285,7 @@ where
     }
 
     async fn wait_for_rf_read(&mut self, mode: WaitMode) -> Result<(), Error> {
-        self.wait_for(Self::check_rf_read, mode).await
+        self.wait_for(WaitFor::Read, mode).await
     }
 
     async fn wait_for_rf_write(&mut self, mode: WaitMode) -> Result<(), Error> {
@@ -301,7 +304,7 @@ where
         )
         .await?;
 
-        self.wait_for(Self::check_rf_write, mode).await
+        self.wait_for(WaitFor::Write, mode).await
     }
 
     async fn read_raw_message(&mut self) -> Result<Message, Error> {
@@ -381,6 +384,12 @@ pub enum WaitMode {
         ms: u32,
     },
     Interrupt,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum WaitFor {
+    Read,
+    Write,
 }
 
 pub struct NfcInterrupt<P: gpio::ExtiPin> {

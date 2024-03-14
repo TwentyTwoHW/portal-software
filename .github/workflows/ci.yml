@@ -69,8 +69,11 @@ jobs:
         name: portalffi-framework
         path: ./sdk/libportal-ios/portalFFI.xcframework.zip
 
-  build-firmware-device:
+  build-firmware:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [device, emulator]
     steps:
     - uses: actions/checkout@v3
     - uses: cachix/install-nix-action@v22
@@ -86,10 +89,10 @@ jobs:
           ./target
           ./firmware/target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-    - run: nix-shell --run "cd firmware && cargo build --no-default-features --features device --release"
+    - run: nix-shell --run "cd firmware && cargo build --no-default-features --features ${{ matrix.target }} --release"
     - uses: actions/upload-artifact@v2
       with:
-        name: firmware
+        name: firmware-${{ matrix.target }}
         path: ./firmware/target/thumbv7em-none-eabihf/release/firmware
 
   run-firmware-tests:

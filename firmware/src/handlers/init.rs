@@ -1,17 +1,17 @@
 // Portal Hardware Wallet firmware and supporting software libraries
-// 
+//
 // Copyright (C) 2024 Alekos Filini
-// 
+//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -27,7 +27,7 @@ use model::InitializedConfig;
 use model::UnverifiedConfig;
 use rand::RngCore;
 
-use bdk::bitcoin::util::bip32;
+use bdk::bitcoin::bip32;
 use bdk::bitcoin::Network;
 use bdk::descriptor::template::DescriptorTemplate;
 use bdk::descriptor::IntoWalletDescriptor;
@@ -77,7 +77,7 @@ fn make_wallet_from_xprv(
         xprv,
         bdk::KeychainKind::Internal,
     ));
-    let wallet = bdk::Wallet::new(descriptor, Some(descriptor_internal), (), network)?;
+    let wallet = bdk::Wallet::new_no_persist(descriptor, Some(descriptor_internal), network)?;
 
     Ok(wallet)
 }
@@ -256,7 +256,7 @@ pub async fn display_mnemonic(
     peripherals.tsc_enabled.enable();
 
     let mnemonic = Mnemonic::from_entropy(&config.entropy.bytes).map_err(map_err_config)?;
-    let mnemonic_str = mnemonic.word_iter().collect::<alloc::vec::Vec<_>>();
+    let mnemonic_str = mnemonic.words().collect::<alloc::vec::Vec<_>>();
     for (chunk_index, words) in mnemonic_str.chunks(2).enumerate() {
         let mut page = MnemonicPage::new((chunk_index * 2) as u8, &words);
         page.init_display(&mut peripherals.display)?;
