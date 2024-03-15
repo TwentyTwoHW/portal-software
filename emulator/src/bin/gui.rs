@@ -114,16 +114,15 @@ async fn main() -> Result<(), emulator::Error> {
 
         let cmd_args = vec!["build"];
 
-        let output = ProcessCommand::new("cargo")
+        let status = ProcessCommand::new("cargo")
             .current_dir(&args.global_opts.firmware_src_directory)
             .args(cmd_args)
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
             .stdin(Stdio::piped())
-            .output()
+            .spawn()?
+            .wait()
             .await?;
 
-        if !output.status.success() {
+        if !status.success() {
             return Err("Cargo build failed".into());
         }
     }
