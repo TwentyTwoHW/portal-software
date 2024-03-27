@@ -2,6 +2,21 @@
 
 This directory contains the code for the binary that emulates the hardware peripherals of the Portal: while the CPU itself is emulated by QEMU, the display, NFC IC and touch sensitive button are emulated by this binary and the events sent to QEMU via a serial interface.
 
+## Docker Image
+
+If you'd like to play with the emulator without rebuilding everything from scratch you can use our Docker image: it contains a pre-build emulator and firmware, plus all the required dependencies. It spawns the emulator in a virtual X environment, which is then exposed via VNC or from a web client.
+
+To run the emulator pull the image and start it as follows:
+
+```
+docker image pull afilini/portal-emulator:latest
+docker run -it --publish 2222:2222 --publish 5900:5900 --rm afilini/portal-emulator:latest
+```
+
+### Run a custom firmware
+
+Using the Docker image you can also run a custom firmware file by changing the command slightly so that it loads the firmware from a different path. You can then mount a local `target` directory which is written to by the dockerized development environment. For more details checkout the README at the root of this project.
+
 ## Protocol
 
 When running in the emulator the firmware opens the `UART1` port and uses that as a communication channel with this binary.

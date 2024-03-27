@@ -4,3 +4,11 @@
 .DS_Store
 
 /firmware/serial1.socket
+
+/result
+
+# Created by the docker env
+.cargo/.package-cache*
+.cargo/git
+.cargo/registry
+.bash_history

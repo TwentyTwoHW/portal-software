@@ -12,18 +12,10 @@ jobs:
         nix_path: nixpkgs=channel:nixos-unstable
     - name: Print nixpkgs version
       run: nix-instantiate --eval -E '(import <nixpkgs> {}).lib.version'
-    - uses: actions/cache@v2
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          ./target
-          ./firmware/target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-    - run: nix-shell --arg withEmbedded false --run "cargo build --package emulator"
-    - run: nix-shell --arg withEmbedded false --run "cargo build --package model"
-    - run: nix-shell --arg withEmbedded false --run "cargo build --package gui"
-    - run: nix-shell --arg withEmbedded false --run "cargo build --package sdk"
+    - run: nix build .#emulator
+    - run: nix build .#model
+    - run: nix build .#gui-simulator
+    - run: nix build .#sdk
 
   android-bindings:
     runs-on: ubuntu-latest
@@ -41,11 +33,11 @@ jobs:
           ~/.cargo/git
           ./target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-android
-    - run: nix-shell --arg fullAndroid true --arg withEmbedded false --run "cd ./sdk/libportal-android && ./gradlew publishToMavenLocal --exclude-task signMavenPublication"
+    - run: nix develop .#android --command bash -c "cd sdk/libportal-android && ./gradlew publishToMavenLocal --exclude-task signMavenPublication"
     - uses: actions/upload-artifact@v2
       with:
         name: local-maven
-        path: ~/.m2/repository/xyz/twenty_two/libportal-android/
+        path: ~/.m2/repository/xyz/twenty-two/libportal-android/
 
   ios-bindings:
     runs-on: macos-latest
@@ -63,7 +55,7 @@ jobs:
           ~/.cargo/git
           ./target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-ios
-    - run: nix-shell --arg withIos true --arg withEmbedded false --run "cd ./sdk/libportal-ios && PACKAGE=1 ./build-local-swift.sh"
+    - run: nix develop .#ios --command bash -c "cd sdk/libportal-ios && PACKAGE=1 ./build-local-swift.sh"
     - uses: actions/upload-artifact@v2
       with:
         name: portalffi-framework
@@ -89,7 +81,7 @@ jobs:
           ./target
           ./firmware/target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-    - run: nix-shell --run "cd firmware && cargo build --no-default-features --features ${{ matrix.target }} --release"
+    - run: nix develop .#embedded --command bash -c "cd firmware && cargo build --no-default-features --features ${{ matrix.target }} --release"
     - uses: actions/upload-artifact@v2
       with:
         name: firmware-${{ matrix.target }}
@@ -110,9 +102,9 @@ jobs:
           ./target
           ./firmware/target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-fw-test
-    - run: nix-shell --run "cd firmware && cargo build --no-default-features --features emulator,emulator-fast-ticks --profile=emulator-fast-ticks"
-    - run: nix-shell --run "cargo build --package emulator --no-default-features"
-    - run: nix-shell --run "REPORT_TMP_DIR=/tmp/portal-test-report RUST_LOG=emulator=trace cargo emu-test -- --nocapture --test-threads 1"
+    - run: nix develop .#embedded --command bash -c "cd firmware && cargo build --no-default-features --features emulator,emulator-fast-ticks --profile=emulator-fast-ticks --verbose"
+    - run: nix develop .#embedded --command bash -c "cargo build --package emulator --no-default-features"
+    - run: nix develop .#embedded --command bash -c "REPORT_TMP_DIR=/tmp/portal-test-report RUST_LOG=emulator=trace cargo emu-test -- --nocapture --test-threads 1"
       timeout-minutes: 10
     - uses: actions/upload-artifact@v2
       if: always()
