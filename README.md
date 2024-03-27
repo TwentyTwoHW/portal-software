@@ -37,7 +37,35 @@ The dependencies you'll need are:
 * SDL2 to run the GUI simulator (`cargo gui-sim`)
 * `probe-run` to flash the firmware to a physical card
 
-If you have NixOS or the nix package manager installed you can get a shell with everything installed by running `nix-shell` in the root directory of the project.
+### NixOS
+
+If you have NixOS or the nix package manager installed you can get a shell with everything installed by running `nix develop .#embedded` in the root directory of the project.
+
+### Docker Environment
+
+We provide two Docker images, one containing the development environment (compiler and tools) and one providing a virtual graphical environment for the emulator.
+
+Assuming you are in the root of the project, you can run the development environment with:
+
+```
+docker image pull afilini/portal-dev-environment:latest
+
+# Start the development environment and mount the portal-software directory into it
+docker run -it --rm --mount type=bind,source=$PWD,target=/app afilini/portal-dev-environment:latest
+# Enter the app directory, compile the firmware and run the tests through the headless emulator
+$ cd /app && cargo emu-test
+```
+
+If you need the full graphical emulator you can combine the dev environment with the other Docker image as such (run this in another terminal):
+
+```
+docker image pull afilini/portal-emulator:latest
+
+# Run the emulator image mapping the locally-build firmware into it
+docker run -it --rm --publish 2222:2222 --publish 5900:5900 --mount type=bind,source=$PWD/firmware/,target=/app afilini/portal-emulator:latest run-server --firmware /app/target/thumbv7em-none-eabihf/debug/firmware
+```
+
+With these two environments setup you can run `cd firmware && cargo build` in the first terminal, then start the emulator with the custom firmware built locally.
 
 ### Running the Tests
 

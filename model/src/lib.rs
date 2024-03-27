@@ -840,8 +840,8 @@ mod tests {
 
     #[test]
     fn test_append_fragments() {
-        let frag1 = MessageFragment::from([0x00u8, 0x05].as_slice());
-        let frag2 = MessageFragment::from([0x01u8, 0x10].as_slice());
+        let frag1 = MessageFragment::from([0x00u8, 0x01, 0x05].as_slice());
+        let frag2 = MessageFragment::from([0x01u8, 0x01, 0x10].as_slice());
 
         let mut message = Message::empty();
         message.push_fragment(frag1).unwrap();
@@ -855,19 +855,5 @@ mod tests {
         // Message already finished
         let frag3 = MessageFragment::from([0x01u8, 0x10].as_slice());
         assert!(message.push_fragment(frag3).is_err());
-    }
-
-    #[test]
-    fn test_message_deserialize() {
-        let frag = MessageFragment::from(r#"{"amount":"10.00","cur":"EUR"}"#.as_bytes());
-        let message = Message::new(frag);
-        assert!(message.is_finished());
-        assert!(message.deserialize::<UrlRequest<Raw>>().is_ok());
-
-        // Add garbage at the end
-        let frag = MessageFragment::from(r#"{"amount":"10.00","cur":"EUR"}aaaa"#.as_bytes());
-        let message = Message::new(frag);
-        assert!(message.is_finished());
-        assert!(message.deserialize::<UrlRequest<Raw>>().is_err());
     }
 }

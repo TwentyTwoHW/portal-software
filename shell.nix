@@ -95,6 +95,11 @@ pkgs.mkShell rec {
   GRADLE_OPTS = lib.optionals withAndroid "-Dorg.gradle.project.android.aapt2FromMavenOverride=${ANDROID_SDK_ROOT}/build-tools/${android.buildToolsVersion}/aapt2";
 
   shellHook = ''
+    RED='\033[1;31m'
+    NC='\033[0m'
+
+    printf "$RED Warning: the shell.nix file is deprecated, please migrate to the flake$NC\n"
+
     ${
       lib.optionalString withAndroid androidShellHook
     }
