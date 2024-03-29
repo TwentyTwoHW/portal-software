@@ -98,11 +98,13 @@ pub(super) fn write_serial(data: impl Iterator<Item = u8>) {
 //     });
 // }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum PeripheralIncomingMsg {
     Tsc,
     Nfc,
-    Reset,
     FlashContent,
+    Reset,
+    Entropy,
 }
 
 impl PeripheralIncomingMsg {
@@ -110,8 +112,9 @@ impl PeripheralIncomingMsg {
         match v {
             0x01 => Some(PeripheralIncomingMsg::Tsc),
             0x02 => Some(PeripheralIncomingMsg::Nfc),
-            0x04 => Some(PeripheralIncomingMsg::Reset),
             0x03 => Some(PeripheralIncomingMsg::FlashContent),
+            0x04 => Some(PeripheralIncomingMsg::Reset),
+            0x05 => Some(PeripheralIncomingMsg::Entropy),
             _ => None,
         }
     }

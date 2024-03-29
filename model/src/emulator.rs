@@ -69,6 +69,7 @@ pub enum EmulatorMessage {
     Nfc(alloc::vec::Vec<u8>),
     FlashContent(alloc::vec::Vec<u8>),
     Reset,
+    Entropy([u8; 32]),
 }
 
 impl EmulatorMessage {
@@ -100,6 +101,11 @@ impl EmulatorMessage {
             EmulatorMessage::Reset => {
                 alloc::vec![0x04]
             }
+            EmulatorMessage::Entropy(data) => {
+                let mut v = alloc::vec![0x05, 0x00, 0x20];
+                v.extend_from_slice(data);
+                v
+            }
         }
     }
 
@@ -112,6 +118,7 @@ impl EmulatorMessage {
             EmulatorMessage::Reset => "Reset".to_string(),
             EmulatorMessage::Nfc(bytes) => alloc::format!("Nfc({:02X?})", bytes),
             EmulatorMessage::FlashContent(_) => "FlashContent(...)".to_string(),
+            EmulatorMessage::Entropy(data) => alloc::format!("Entropy({:02X?})", data),
         }
     }
 }

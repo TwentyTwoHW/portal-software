@@ -26,6 +26,7 @@ use syn::{parse_macro_input, Ident, ItemFn, LitStr, Token};
 #[derive(Debug, Clone, Default)]
 struct Attributes {
     flash_file: Option<String>,
+    entropy: Option<String>,
 }
 
 struct SingleAttr {
@@ -51,6 +52,7 @@ impl Parse for Attributes {
         for attr in &parsed {
             match attr.name.to_string().as_str() {
                 "flash_file" => attrs.flash_file = Some(attr.value.value()),
+                "entropy" => attrs.entropy = Some(attr.value.value()),
                 x => panic!("Invalid attr {}", x),
             }
         }
@@ -77,6 +79,13 @@ pub fn functional_test(attr: TokenStream, item: TokenStream) -> TokenStream {
             Box::new(Cursor::new(flash))
         }},
     };
+    let entropy = match attrs.entropy {
+        None => quote! { None },
+        Some(v) => quote! {{
+            let entropy = crate::utils::model::parse_entropy(#v).expect("Valid 32 byte hex entropy");
+            Some(entropy)
+        }},
+    };
 
     let expanded = quote! {
         #[tokio::test(flavor ="multi_thread", worker_threads = 2)]
@@ -95,12 +104,16 @@ pub fn functional_test(attr: TokenStream, item: TokenStream) -> TokenStream {
             let (res_sender, res_receiver) = mpsc::channel::<Result<(), AssertionResult>>(16);
 
             let firmware = get_fw_path();
+            let entropy = #entropy;
+            let entropy = crate::utils::model::get_entropy(&entropy);
+
             let mut emulator = EmulatorInstance::spawn_qemu(
                 &firmware,
                 false,
                 None,
                 false,
                 #flash,
+                entropy,
             )
             .await?;
 
