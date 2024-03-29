@@ -22,6 +22,29 @@ use serde::{Deserialize, Serialize};
 use embedded_graphics::pixelcolor::Gray8;
 use embedded_graphics_simulator::OutputImage;
 
+#[derive(Debug, Clone)]
+pub struct Entropy(pub [u8; 32]);
+
+pub fn parse_entropy(s: &str) -> Result<Entropy, String> {
+    Ok(Entropy(
+        model::bitcoin::hashes::hex::FromHex::from_hex(s).map_err(|e| e.to_string())?,
+    ))
+}
+
+pub fn get_entropy(arg: &Option<Entropy>) -> [u8; 32] {
+    use rand::RngCore;
+
+    match arg {
+        Some(ref val) => val.0,
+        None => {
+            let mut entropy = [0x00; 32];
+            rand::thread_rng().fill_bytes(&mut entropy);
+
+            entropy
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TestScript {
     pub sequence: Vec<TestOp>,

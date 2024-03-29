@@ -101,6 +101,12 @@ struct GlobalOpts {
     /// If unspecified the flash data will only be kept in memory temporarily.
     #[clap(long)]
     flash_file: Option<PathBuf>,
+
+    /// Entropy used to seed the device
+    ///
+    /// If unspecified it will be generated randomly. Must be a 32-byte hex string
+    #[clap(long, short = 'e', value_parser = emulator::utils::model::parse_entropy)]
+    entropy: Option<emulator::utils::model::Entropy>,
 }
 
 #[tokio::main]
@@ -146,6 +152,7 @@ async fn main() -> Result<(), emulator::Error> {
             .transpose()?,
         args.global_opts.listen_gdb,
         args.global_opts.wait_gdb,
+        emulator::utils::model::get_entropy(&args.global_opts.entropy),
     )
     .await?;
 
@@ -188,6 +195,13 @@ async fn main() -> Result<(), emulator::Error> {
     while app.wait() {
         while let Some(_) = try_pull_msg(&mut emulator.msgs.finish_boot)? {
             log::info!("Card was reset, performing Noise handshake again...");
+
+            let entropy = emulator::utils::model::get_entropy(&args.global_opts.entropy);
+            emulator
+                .card
+                .send(model::emulator::EmulatorMessage::Entropy(entropy))
+                .unwrap();
+
             sdk.new_tag().await.expect("New tag");
         }
 

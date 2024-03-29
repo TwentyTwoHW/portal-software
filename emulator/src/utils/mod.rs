@@ -207,6 +207,7 @@ pub async fn get_emulator_instance(
     flash: Option<Box<dyn ReadWrite + Send>>,
     listen_gdb: Option<u16>,
     wait_gdb: bool,
+    entropy: [u8; 32],
 ) -> Result<EmulatorInstance, crate::Error> {
     let flash = flash.unwrap_or_else(|| Box::new(Cursor::new(Vec::new())));
 
@@ -231,7 +232,8 @@ pub async fn get_emulator_instance(
             _qemu_handle: None,
         })
     } else {
-        EmulatorInstance::spawn_qemu(firmware, join_logs, listen_gdb, wait_gdb, flash).await
+        EmulatorInstance::spawn_qemu(firmware, join_logs, listen_gdb, wait_gdb, flash, entropy)
+            .await
     }
 }
 
@@ -290,6 +292,7 @@ impl EmulatorInstance {
         listen_gdb: Option<u16>,
         wait_gdb: bool,
         flash: Box<dyn ReadWrite + Send>,
+        entropy: [u8; 32],
     ) -> Result<Self, crate::Error> {
         let (reader, writer, log, _qemu_handle) =
             get_qemu_instance(firmware, join_logs, listen_gdb, wait_gdb)?;
@@ -302,6 +305,8 @@ impl EmulatorInstance {
 
         // Wait for bootup before attaching SDK
         tokio::time::timeout(std::time::Duration::from_secs(2), msgs.finish_boot.recv()).await?;
+        // Send new entropy
+        card.send(EmulatorMessage::Entropy(entropy)).unwrap();
         let sdk = Self::attach_sdk(nfc, card.clone());
 
         Ok(EmulatorInstance {
@@ -373,6 +378,7 @@ impl EmulatorInstance {
                             log::trace!("> FlashContent({})", data.len())
                         }
                         EmulatorMessage::Reset => log::trace!("> Reset"),
+                        EmulatorMessage::Entropy(data) => log::trace!("> Entropy({:02X?})", data),
                     }
 
                     let encoded = msg.encode();

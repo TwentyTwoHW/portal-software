@@ -184,7 +184,7 @@ mod app {
         dp.RCC.apb2enr.write(|w| w.syscfgen().set_bit());
 
         #[allow(unused_mut)]
-        let (mut nfc, nfc_interrupt, nfc_finished, display, tsc, rng, flash) =
+        let (mut nfc, nfc_interrupt, nfc_finished, display, tsc, mut rng, flash) =
             hw::init_peripherals(dp, cp).unwrap();
 
         let tsc_enabled = TscEnable::new(tsc.get_enabled_ref());
@@ -204,9 +204,26 @@ mod app {
         #[cfg(feature = "emulator")]
         let emulator_channels = {
             use crate::hw::EmulatedNT3H;
+            use rand::SeedableRng;
 
             let (flash_sender, flash_receiver) = rtic_sync::make_channel!(alloc::vec::Vec::<u8>, 1);
             flash.set_channel(flash_receiver);
+
+            hw::report_finish_boot();
+
+            // A bit hacky but at this point serial interrupts aren't setup yet so we have to wait for the entropy here
+            loop {
+                match crate::emulator::serial_interrupt() {
+                    None => continue,
+                    Some(val) => {
+                        assert_eq!(val, crate::emulator::PeripheralIncomingMsg::Entropy);
+                        break;
+                    },
+                }
+            }
+            let entropy = crate::emulator::read_serial();
+            log::debug!("Seeding rng with {:02X?}", entropy);
+            rng = rand_chacha::ChaCha20Rng::from_seed(entropy.try_into().unwrap());
 
             hw::EmulatorChannels {
                 tsc: tsc_sender.clone(),
@@ -380,9 +397,6 @@ mod app {
 
     #[task(priority = 2, local = [timer_sender])]
     async fn timer_ticking(cx: timer_ticking::Context) {
-        #[cfg(feature = "emulator")]
-        hw::report_finish_boot();
-
         loop {
             rtic_monotonics::systick::Systick::delay(TIMER_TICK_MILLIS.millis()).await;
             let _ = cx.local.timer_sender.try_send(());

@@ -17,7 +17,9 @@
 
 use super::*;
 
-#[functional_test_wrapper::functional_test]
+#[functional_test_wrapper::functional_test(
+    entropy = "0000000000000000000000000000000000000000000000000000000000000000"
+)]
 async fn test_generate_mnemonic_12words(mut tester: Tester) -> Result<(), crate::Error> {
     tester.nfc(NfcAction::GetStatus).await?;
     tester
