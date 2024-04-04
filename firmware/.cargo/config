@@ -6,7 +6,12 @@ rustflags = [
   # use the Tlink.x scrip from the cortex-m-rt crate
   "-C", "link-arg=-Tlink.x",
   # Use v0 symbol mangling style (https://rust-lang.github.io/rfcs/2603-rust-symbol-name-mangling-v0.html). This allows recovering the full monomorphized type from the symbol name
-  "-C", "symbol-mangling-version=v0"
+  "-C", "symbol-mangling-version=v0",
+  "-C", "linker-plugin-lto",
+  "-C", "linker=clang",
+  "-C", "link-arg=-fuse-ld=lld",
+  "-C", "link-arg=-flto",
+  "-C", "link-arg=--target=thumbv7em-none-eabihf"
 ]
 
 # Doesn't seem to work but let's keep it here so we can find it when needed
