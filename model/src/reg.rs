@@ -82,6 +82,15 @@ pub struct REG_LOCK {
     pub RFU: B6,
 }
 
+impl fmt::Debug for REG_LOCK {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("REG_LOCK")
+            .field("REG_LOCK_NFC", &self.REG_LOCK_NFC())
+            .field("REG_LOCK_I2C", &self.REG_LOCK_I2C())
+            .finish()
+    }
+}
+
 #[allow(non_camel_case_types)]
 #[bitfield]
 #[derive(Clone)]
@@ -106,6 +115,100 @@ impl fmt::Debug for NS_REG {
             .field("RF_LOCKED", &self.RF_LOCKED())
             .field("I2C_LOCKED", &self.I2C_LOCKED())
             .field("NDEF_DATA_READ", &self.NDEF_DATA_READ())
+            .finish()
+    }
+}
+
+#[allow(non_camel_case_types)]
+#[bitfield]
+pub struct AUTH0 {
+    pub AUTH0: u8,
+}
+
+impl fmt::Debug for AUTH0 {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AUTH0")
+            .field("AUTH0", &self.AUTH0())
+            .finish()
+    }
+}
+
+#[allow(non_camel_case_types)]
+#[bitfield]
+pub struct ACCESS {
+    pub AUTHLIM: B3,
+    _RFU1: B2,
+    pub NFC_DIS_SEC1: bool,
+    _RFU2: B1,
+    pub NFC_PROT: bool,
+}
+
+impl fmt::Debug for ACCESS {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ACCESS")
+            .field("AUTHLIM", &self.AUTHLIM())
+            .field("NFC_DIS_SEC1", &self.NFC_DIS_SEC1())
+            .field("NFC_PROT", &self.NFC_PROT())
+            .finish()
+    }
+}
+
+#[allow(non_camel_case_types)]
+#[bitfield]
+pub struct DYNAMIC_LOCK_BYTES {
+    _BYTE3: B8,
+
+    pub BL_16_47: bool,
+    pub BL_48_79: bool,
+    pub BL_80_111: bool,
+    pub BL_112_143: bool,
+    pub BL_144_175: bool,
+    pub BL_176_207: bool,
+    pub BL_208_225: bool,
+    _RFUI1: B1,
+
+    pub LOCK_PAGE_144_159: bool,
+    pub LOCK_PAGE_160_175: bool,
+    pub LOCK_PAGE_176_191: bool,
+    pub LOCK_PAGE_192_207: bool,
+    pub LOCK_PAGE_208_223: bool,
+    pub LOCK_PAGE_224_225: bool,
+    _RFUI2: B1,
+    _RFUI3: B1,
+    pub LOCK_PAGE_16_31: bool,
+    pub LOCK_PAGE_32_47: bool,
+    pub LOCK_PAGE_48_63: bool,
+    pub LOCK_PAGE_64_79: bool,
+    pub LOCK_PAGE_80_95: bool,
+    pub LOCK_PAGE_96_111: bool,
+    pub LOCK_PAGE_112_127: bool,
+    pub LOCK_PAGE_128_143: bool,
+}
+
+impl fmt::Debug for DYNAMIC_LOCK_BYTES {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DYNAMIC_LOCK_BYTES")
+            .field("BL_16_47", &self.BL_16_47())
+            .field("BL_48_79", &self.BL_48_79())
+            .field("BL_80_111", &self.BL_80_111())
+            .field("BL_112_143", &self.BL_112_143())
+            .field("BL_144_175", &self.BL_144_175())
+            .field("BL_176_207", &self.BL_176_207())
+            .field("BL_208_225", &self.BL_208_225())
+            .field("LOCK_PAGE_144_159", &self.LOCK_PAGE_144_159())
+            .field("LOCK_PAGE_160_175", &self.LOCK_PAGE_160_175())
+            .field("LOCK_PAGE_176_191", &self.LOCK_PAGE_176_191())
+            .field("LOCK_PAGE_192_207", &self.LOCK_PAGE_192_207())
+            .field("LOCK_PAGE_208_223", &self.LOCK_PAGE_208_223())
+            .field("LOCK_PAGE_224_225", &self.LOCK_PAGE_224_225())
+            .field("LOCK_PAGE_16_31", &self.LOCK_PAGE_16_31())
+            .field("LOCK_PAGE_32_47", &self.LOCK_PAGE_32_47())
+            .field("LOCK_PAGE_48_63", &self.LOCK_PAGE_48_63())
+            .field("LOCK_PAGE_64_79", &self.LOCK_PAGE_64_79())
+            .field("LOCK_PAGE_80_95", &self.LOCK_PAGE_80_95())
+            .field("LOCK_PAGE_96_111", &self.LOCK_PAGE_96_111())
+            .field("LOCK_PAGE_112_127", &self.LOCK_PAGE_112_127())
+            .field("LOCK_PAGE_128_143", &self.LOCK_PAGE_128_143())
             .finish()
     }
 }
