@@ -25,7 +25,7 @@ async fn test_generate_mnemonic_12words(mut tester: Tester) -> Result<(), crate:
     tester
         .nfc_assertion(model::Reply::Info(model::DeviceInfo {
             initialized: model::InitializationStatus::Uninitialized,
-            firmware_version: None,
+            firmware_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         }))
         .await?;
 
@@ -64,7 +64,7 @@ async fn test_load_config(mut tester: Tester) -> Result<(), crate::Error> {
                 unlocked: true,
                 network: model::bitcoin::Network::Signet,
             },
-            firmware_version: None,
+            firmware_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         }))
         .await?;
 
@@ -80,7 +80,7 @@ async fn test_locked(mut tester: Tester) -> Result<(), crate::Error> {
                 unlocked: false,
                 network: model::bitcoin::Network::Signet,
             },
-            firmware_version: None,
+            firmware_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         }))
         .await?;
 
@@ -101,7 +101,7 @@ async fn test_locked(mut tester: Tester) -> Result<(), crate::Error> {
                 unlocked: true,
                 network: model::bitcoin::Network::Signet,
             },
-            firmware_version: None,
+            firmware_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         }))
         .await?;
 

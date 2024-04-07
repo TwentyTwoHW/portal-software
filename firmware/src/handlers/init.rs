@@ -165,6 +165,7 @@ pub async fn handle_init(
                     password,
                 });
             }
+            #[cfg(feature = "emulator")]
             Some(model::Request::BeginFwUpdate(header)) => {
                 break Ok(CurrentState::UpdatingFw { header });
             }

@@ -47,6 +47,7 @@ mod handlers;
 #[cfg(feature = "device")]
 mod hw;
 mod hw_common;
+mod version;
 #[cfg(feature = "emulator")]
 pub use emulator::*;
 

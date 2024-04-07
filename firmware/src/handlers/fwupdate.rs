@@ -35,6 +35,7 @@ use gui::{FwUpdateProgressPage, SingleLineTextPage, SummaryPage};
 
 use super::*;
 use crate::Error;
+use crate::version;
 
 const FIRMWARE_SIGNING_KEY: &'static str =
     "1608bd04cf3212070b3de57f4a2ad8e5108a103af037f878ec75f4a2068de610";
@@ -134,6 +135,8 @@ struct Checkpoint {
     next_page: usize,
     #[cbor(n(4))]
     midstate: Box<ByteArray<32>>,
+    #[cbor(n(5))]
+    tail: [u8; version::TAIL_SIZE],
 }
 
 #[cfg_attr(feature = "emulator", allow(dead_code))]
@@ -143,6 +146,7 @@ struct FwUpdater<'h> {
     page: usize,
     bank_to_flash: BankToFlash,
     prev_checkpoint: Option<usize>,
+    tail: [u8; version::TAIL_SIZE],
 }
 
 impl<'h> FwUpdater<'h> {
@@ -276,7 +280,8 @@ impl<'h> FwUpdater<'h> {
             hash,
             page: checkpoint.as_ref().map(|ckpt| ckpt.next_page).unwrap_or(1),
             bank_to_flash,
-            prev_checkpoint: checkpoint.map(|ckpt| ckpt.next_page),
+            prev_checkpoint: checkpoint.as_ref().map(|ckpt| ckpt.next_page),
+            tail: checkpoint.map(|ckpt| ckpt.tail).unwrap_or([0u8; version::TAIL_SIZE]),
         })
     }
 
@@ -287,6 +292,7 @@ impl<'h> FwUpdater<'h> {
             signature: self.header.signature.clone(),
             next_page: self.page,
             midstate: Box::new(ByteArray::from(self.hash.midstate().into_inner())),
+            tail: self.tail,
         };
 
         let mut data = alloc::vec![0x00, 0x00];
@@ -352,6 +358,15 @@ impl<'h> FwUpdater<'h> {
         self.page += 1;
         self.hash.input(&data[..data_end]);
 
+        // Update tail
+        let mut tail = [0u8; version::TAIL_SIZE];
+        let keep_tail = version::TAIL_SIZE.saturating_sub(data_end);
+        let add_tail = data_end.saturating_sub(version::TAIL_SIZE);
+        tail[0..keep_tail].copy_from_slice(&self.tail[(version::TAIL_SIZE - keep_tail)..]);
+        tail[keep_tail..].copy_from_slice(&data[add_tail..data_end]);
+
+        self.tail = tail;
+
         #[cfg(feature = "device")]
         if self.page % CHECKPOINT_PAGE_INTERVAL == 0 {
             self.save_checkpoint(flash)?;
@@ -394,6 +409,15 @@ impl<'h> FwUpdater<'h> {
                 log::warn!("Invalid signature, aborting update");
                 return Err(Error::InvalidFirmware);
             }
+        }
+
+        // Check version
+        let parsed = version::UpdateTail::parse(&self.tail);
+        if parsed.version > version::CURRENT_VERSION && parsed.variant == version::CURRENT_VARIANT {
+            log::info!("FW Variant {:02X}, upgrading from {} to {}", version::CURRENT_VARIANT, version::CURRENT_VERSION, parsed.version);
+        } else {
+            log::warn!("Invalid version or variant: variant {:02X} vs {:02X}(current), version {} vs {}(current)", parsed.variant, version::CURRENT_VARIANT, parsed.version, version::CURRENT_VERSION);
+            return Err(Error::InvalidFirmware);
         }
 
         #[cfg(feature = "device")]

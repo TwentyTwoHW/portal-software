@@ -22,7 +22,7 @@ extern crate alloc;
 use core::ops::Deref;
 
 use alloc::boxed::Box;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 pub use minicbor::bytes::{ByteArray, ByteVec};
@@ -517,7 +517,6 @@ pub enum MaybeEncrypted {
 pub struct DeviceInfo {
     #[cbor(n(0))]
     pub initialized: InitializationStatus,
-    // Only available after unlocking
     #[cbor(n(1))]
     pub firmware_version: Option<String>,
 }
@@ -549,7 +548,7 @@ impl DeviceInfo {
     pub fn new_locked_uninitialized() -> Self {
         DeviceInfo {
             initialized: InitializationStatus::Uninitialized,
-            firmware_version: None,
+            firmware_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         }
     }
 
@@ -559,14 +558,14 @@ impl DeviceInfo {
                 unlocked: false,
                 network,
             },
-            firmware_version: None,
+            firmware_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         }
     }
 
     pub fn new_unverified_config(network: bitcoin::Network, with_code: bool) -> Self {
         DeviceInfo {
             initialized: InitializationStatus::Unverified { with_code, network },
-            firmware_version: None,
+            firmware_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         }
     }
 
@@ -576,7 +575,7 @@ impl DeviceInfo {
                 unlocked: true,
                 network,
             },
-            firmware_version: None,
+            firmware_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         }
     }
 }
