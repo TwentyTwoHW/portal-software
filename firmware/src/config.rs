@@ -56,6 +56,7 @@ pub async fn write_config(flash: &mut Flash, config: &Config) -> Result<(), Conf
 
     let page = flash::FlashPage(CONFIG_PAGE);
     prog.erase_page(page)?;
+    prog.erase_page(flash::FlashPage(CONFIG_PAGE + 256))?; // Erase on both banks
     prog.write(page.to_address(), &data)?;
 
     Ok(())
