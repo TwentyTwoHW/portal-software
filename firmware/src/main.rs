@@ -219,7 +219,7 @@ mod app {
                     Some(val) => {
                         assert_eq!(val, crate::emulator::PeripheralIncomingMsg::Entropy);
                         break;
-                    },
+                    }
                 }
             }
             let entropy = crate::emulator::read_serial();

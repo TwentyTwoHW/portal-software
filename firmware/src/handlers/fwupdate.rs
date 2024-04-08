@@ -34,8 +34,8 @@ use minicbor::bytes::ByteArray;
 use gui::{FwUpdateProgressPage, SingleLineTextPage, SummaryPage};
 
 use super::*;
-use crate::Error;
 use crate::version;
+use crate::Error;
 
 const FIRMWARE_SIGNING_KEY: &'static str =
     "1608bd04cf3212070b3de57f4a2ad8e5108a103af037f878ec75f4a2068de610";
@@ -281,7 +281,9 @@ impl<'h> FwUpdater<'h> {
             page: checkpoint.as_ref().map(|ckpt| ckpt.next_page).unwrap_or(1),
             bank_to_flash,
             prev_checkpoint: checkpoint.as_ref().map(|ckpt| ckpt.next_page),
-            tail: checkpoint.map(|ckpt| ckpt.tail).unwrap_or([0u8; version::TAIL_SIZE]),
+            tail: checkpoint
+                .map(|ckpt| ckpt.tail)
+                .unwrap_or([0u8; version::TAIL_SIZE]),
         })
     }
 
@@ -414,7 +416,12 @@ impl<'h> FwUpdater<'h> {
         // Check version
         let parsed = version::UpdateTail::parse(&self.tail);
         if parsed.version > version::CURRENT_VERSION && parsed.variant == version::CURRENT_VARIANT {
-            log::info!("FW Variant {:02X}, upgrading from {} to {}", version::CURRENT_VARIANT, version::CURRENT_VERSION, parsed.version);
+            log::info!(
+                "FW Variant {:02X}, upgrading from {} to {}",
+                version::CURRENT_VARIANT,
+                version::CURRENT_VERSION,
+                parsed.version
+            );
         } else {
             log::warn!("Invalid version or variant: variant {:02X} vs {:02X}(current), version {} vs {}(current)", parsed.variant, version::CURRENT_VARIANT, parsed.version, version::CURRENT_VERSION);
             return Err(Error::InvalidFirmware);

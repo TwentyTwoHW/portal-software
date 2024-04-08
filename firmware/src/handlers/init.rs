@@ -120,11 +120,43 @@ pub async fn handle_por(peripherals: &mut HandlerPeripherals) -> Result<CurrentS
     }
 }
 
+#[cfg(feature = "device")]
+fn read_serial() -> alloc::string::String {
+    const OPTION_BYTES: usize = 0x1FFF_7000;
+    const SERIAL_OFFSET: usize = 4;
+    const SERIAL_LEN: usize = 20;
+
+    let mut buf = [0u8; SERIAL_LEN];
+    let mut address = (OPTION_BYTES + SERIAL_OFFSET) as *const u8;
+
+    for i in 0..SERIAL_LEN {
+        unsafe {
+            buf[i] = core::ptr::read(address);
+            address = address.add(1);
+        }
+    }
+
+    if buf[0] == 0xFF || buf[0] == 0x00 {
+        alloc::string::String::from("NO_SERIAL")
+    } else {
+        buf.into_iter()
+            .take_while(|v| *v != 0x00)
+            .map(|v| v as char)
+            .collect()
+    }
+}
+#[cfg(feature = "emulator")]
+fn read_serial() -> alloc::string::String {
+    Default::default()
+}
+
 pub async fn handle_init(
     mut events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
 ) -> Result<CurrentState, Error> {
-    let page = WelcomePage::new("");
+    let serial = read_serial();
+
+    let page = WelcomePage::new(&serial);
     page.init_display(&mut peripherals.display)?;
     page.draw_to(&mut peripherals.display)?;
     peripherals.display.flush()?;

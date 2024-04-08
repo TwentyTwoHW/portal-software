@@ -56,17 +56,17 @@ pub trait Page {
 }
 
 #[derive(Debug)]
-pub struct WelcomePage {
-    version: &'static str,
+pub struct WelcomePage<'s> {
+    version: &'s str,
 }
 
-impl WelcomePage {
-    pub fn new(version: &'static str) -> Self {
+impl<'s> WelcomePage<'s> {
+    pub fn new(version: &'s str) -> Self {
         WelcomePage { version }
     }
 }
 
-impl Page for WelcomePage {
+impl<'s> Page for WelcomePage<'s> {
     fn draw_to<T>(&self, target: &mut T) -> Result<(), <T as DrawTarget>::Error>
     where
         T: DrawTarget<Color = BinaryColor>,
