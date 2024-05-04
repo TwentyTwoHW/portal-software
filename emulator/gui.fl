@@ -8,7 +8,7 @@ class Emulator {open
   } {
     Fl_Window window {
       label Emulator open
-      xywh {1162 204 565 985} type Double size_range {561 1020 561 0} visible
+      xywh {1162 204 565 1085} type Double size_range {561 1020 561 0} visible
     } {
       Fl_Box display {
         xywh {25 25 511 255} labeltype NO_LABEL
@@ -98,6 +98,32 @@ class Emulator {open
             xywh {300 430 150 35}
           }
         }
+        Fl_Pack inner_pack_8 {open
+          xywh {35 405 525 35} type HORIZONTAL
+          code0 {inner_pack_8.set_spacing(5);}
+        } {
+          Fl_Input get_xpub {
+            xywh {35 430 356 35} textfont 4
+            code0 {let get_xpub = get_xpub.with_id("get_xpub");}
+          }
+          Fl_Button get_xpub_btn {
+            label GetXpub
+            xywh {300 430 150 35}
+          }
+        }
+        Fl_Pack inner_pack_9 {open
+          xywh {35 405 525 35} type HORIZONTAL
+          code0 {inner_pack_9.set_spacing(5);}
+        } {
+          Fl_Input set_descriptor {
+            xywh {35 430 356 35} textfont 4
+            code0 {let set_descriptor = set_descriptor.with_id("set_descriptor");}
+          }
+          Fl_Button set_descriptor_btn {
+            label SetDescriptor
+            xywh {300 430 150 35}
+          }
+        }
         Fl_Pack inner_pack_6 {open
           xywh {35 405 525 35} type HORIZONTAL
           code0 {inner_pack_6.set_spacing(5);}
@@ -121,7 +147,7 @@ class Emulator {open
         }
       }
       Fl_Text_Display console {selected
-        xywh {25 725 511 270} labeltype NO_LABEL textfont 4
+        xywh {25 790 511 270} labeltype NO_LABEL textfont 4
         code0 {console.set_buffer(text::TextBuffer::default());}
       }
     }

@@ -592,9 +592,11 @@ impl<'s, 'l> MainContent for TwoLinesText<'s, 'l> {
     where
         T: DrawTarget<Color = BinaryColor>,
     {
+        let offset = if self.large.contains("\n") { 6 } else { 0 };
+
         let value_text = Text::with_text_style(
             self.small,
-            Point::new(64, 10),
+            Point::new(64, 10 - offset),
             MonoTextStyle::new(&ascii::FONT_6X10, On),
             TextStyleBuilder::new()
                 .alignment(Alignment::Center)
@@ -605,7 +607,7 @@ impl<'s, 'l> MainContent for TwoLinesText<'s, 'l> {
 
         let fees_text = Text::with_text_style(
             self.large,
-            Point::new(64, 34),
+            Point::new(64, 34 - offset),
             MonoTextStyle::new(&ascii::FONT_8X13_BOLD, On),
             TextStyleBuilder::new()
                 .alignment(Alignment::Center)
@@ -629,6 +631,97 @@ impl<'s> ConfirmPairCodePage<'s> {
             100,
             TwoLinesText::new("Pair Code", pair_code),
             "HOLD BTN TO CONFIRM",
+            "KEEP HOLDING...",
+        ))
+    }
+}
+
+pub struct GenericTwoLinePage<'s>(ConfirmBarPage<'s, TwoLinesText<'s, 's>>);
+impl_wrapper_page!(
+    GenericTwoLinePage<'s>,
+    ConfirmBarPage<'s, TwoLinesText<'s, 's>>
+);
+impl<'s> GenericTwoLinePage<'s> {
+    pub fn new(small: &'s str, large: &'s str, confirm_text: &'s str, threshold: u32) -> Self {
+        GenericTwoLinePage(ConfirmBarPage::new_default_bar(
+            threshold,
+            TwoLinesText::new(small, large),
+            &confirm_text,
+            "KEEP HOLDING...",
+        ))
+    }
+}
+
+pub struct ConfirmSetDescriptorAddressContent<'s> {
+    address: &'s str,
+    iteration: usize,
+}
+
+impl<'s> ConfirmSetDescriptorAddressContent<'s> {
+    fn new(address: &'s str) -> Self {
+        ConfirmSetDescriptorAddressContent {
+            address,
+            iteration: 0,
+        }
+    }
+}
+
+impl<'s> MainContent for ConfirmSetDescriptorAddressContent<'s> {
+    fn draw_to<T>(&self, target: &mut T) -> Result<(), <T as DrawTarget>::Error>
+    where
+        T: DrawTarget<Color = BinaryColor>,
+    {
+        let screen_size = target.bounding_box();
+        let rectangle = Rectangle::new(Point::new(0, 22), Size::new(screen_size.size.width, 14))
+            .into_styled(PrimitiveStyle::with_fill(Off));
+        rectangle.draw(target)?;
+
+        let value_text = Text::with_text_style(
+            "Confirm first address",
+            Point::new(64, 10),
+            MonoTextStyle::new(&ascii::FONT_6X10, On),
+            TextStyleBuilder::new()
+                .alignment(Alignment::Center)
+                .baseline(Baseline::Top)
+                .build(),
+        );
+        value_text.draw(target)?;
+
+        let scroll = ScrollText::<1, 5, 15>::new(self.address);
+
+        let address_text = Text::with_text_style(
+            scroll.compute(self.iteration),
+            Point::new(64, 22),
+            MonoTextStyle::new(&ascii::FONT_8X13_BOLD, On),
+            TextStyleBuilder::new()
+                .alignment(Alignment::Center)
+                .baseline(Baseline::Top)
+                .build(),
+        );
+        address_text.draw(target)?;
+
+        Ok(())
+    }
+
+    fn tick(&mut self) -> bool {
+        self.iteration += 1;
+        true
+    }
+}
+
+pub struct ConfirmSetDescriptorAddressPage<'s>(
+    ConfirmBarPage<'s, ConfirmSetDescriptorAddressContent<'s>>,
+);
+impl_wrapper_page!(
+    ConfirmSetDescriptorAddressPage<'s>,
+    ConfirmBarPage<'s, ConfirmSetDescriptorAddressContent<'s>>
+);
+impl<'s> ConfirmSetDescriptorAddressPage<'s> {
+    pub fn new(address: &'s str) -> Self {
+        ConfirmSetDescriptorAddressPage(ConfirmBarPage::new_default_bar(
+            100,
+            ConfirmSetDescriptorAddressContent::new(address),
+            "HOLD BTN FOR NEXT PAGE",
             "KEEP HOLDING...",
         ))
     }

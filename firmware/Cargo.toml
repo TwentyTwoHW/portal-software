@@ -22,7 +22,7 @@ rand = { version = "0.8", default-features = false }
 rand_chacha = { version = "0.3", default-features = false }
 log = "0.4"
 futures = { version = "0.3", default-features = false, features = ["async-await"] }
-# bitcoin = { version = "0.30", default-features = false, features = ["no-std"] }
+bitcoin = { version = "0.29.2", default-features = false, features = ["secp-recovery"] }
 bdk = { git = "https://github.com/afilini/bdk.git", rev = "ea20dff9fadcf75b5b3c7520e0b3fa40a71d3b64", default-features = false, features = ["keys-bip39"] }
 bitcoin_hashes = { version = "0.11.0", default-features = false, features = ["small-hash"] }
 secp256k1 = { version = "0.24.3", default-features = false, features = ["alloc", "lowmemory"] }

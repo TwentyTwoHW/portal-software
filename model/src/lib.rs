@@ -43,6 +43,8 @@ pub const MAX_FRAGMENT_LEN: usize = 64;
 
 pub const DEFAULT_PASSWORD_ITERATIONS: usize = 1024;
 
+pub const HARDENED_FLAG: u32 = 0x80000000;
+
 #[cfg(feature = "emulator")]
 pub mod emulator;
 pub mod encryption;
@@ -252,13 +254,13 @@ impl AsRef<[u8]> for Message {
     }
 }
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Encode, Decode, Clone)]
 pub struct Entropy {
     #[cbor(n(0))]
     pub bytes: ByteVec,
 }
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Encode, Decode, Clone)]
 pub struct SerializedXprv {
     #[cbor(n(0))]
     pub bytes: [u8; 78],
@@ -293,28 +295,229 @@ pub struct UnverifiedConfig {
     pub network: bitcoin::Network,
     #[cbor(n(2))]
     pub pair_code: Option<String>,
+    #[cbor(n(3))]
+    pub descriptor: WalletDescriptor,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+#[cfg_attr(feature = "emulator", derive(serde::Serialize, serde::Deserialize))]
+pub struct WalletDescriptor {
+    #[cbor(n(0))]
+    pub variant: DescriptorVariant,
+    #[cbor(n(1))]
+    pub script_type: ScriptType,
+}
+
+impl WalletDescriptor {
+    pub fn make_bip84(network: bitcoin::Network) -> Self {
+        let network = match network {
+            bitcoin::Network::Bitcoin => 0,
+            _ => 1,
+        };
+
+        WalletDescriptor {
+            variant: DescriptorVariant::SingleSig(SerializedDerivationPath {
+                value: alloc::vec::Vec::from([
+                    HARDENED_FLAG | 84,
+                    HARDENED_FLAG | network,
+                    HARDENED_FLAG | 0,
+                ]),
+            }),
+            script_type: ScriptType::NativeSegwit,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+#[cfg_attr(feature = "emulator", derive(serde::Serialize, serde::Deserialize))]
+pub enum ScriptType {
+    #[cbor(n(0))]
+    Legacy,
+    #[cbor(n(1))]
+    WrappedSegwit,
+    #[cbor(n(2))]
+    NativeSegwit,
+}
+
+impl ScriptType {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            ScriptType::Legacy => "Legacy",
+            ScriptType::WrappedSegwit => "Wrapped Segwit",
+            ScriptType::NativeSegwit => "Native Segwit",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+#[cfg_attr(feature = "emulator", derive(serde::Serialize, serde::Deserialize))]
+pub struct ExtendedKey {
+    #[cbor(n(0))]
+    pub origin: Option<(SerializedFingerprint, SerializedDerivationPath)>,
+    #[cbor(n(1))]
+    pub key: SerializedXpub,
+    #[cbor(n(2))]
+    pub path: SerializedDerivationPath,
+}
+
+impl ExtendedKey {
+    pub fn full_path(&self) -> SerializedDerivationPath {
+        let mut value = self
+            .origin
+            .as_ref()
+            .map(|(_, path)| path.value.clone())
+            .unwrap_or_default();
+        value.extend_from_slice(&self.path.value);
+
+        SerializedDerivationPath { value }
+    }
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+#[cfg_attr(feature = "emulator", derive(serde::Serialize, serde::Deserialize))]
+pub enum MultisigKey {
+    #[cbor(n(0))]
+    Local(#[cbor(n(0))] SerializedDerivationPath),
+    #[cbor(n(1))]
+    External(#[cbor(n(0))] ExtendedKey),
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+#[cfg_attr(feature = "emulator", derive(serde::Serialize, serde::Deserialize))]
+pub struct SerializedFingerprint {
+    #[cbor(n(0))]
+    pub value: [u8; 4],
+}
+impl Into<bip32::Fingerprint> for SerializedFingerprint {
+    fn into(self) -> bip32::Fingerprint {
+        bip32::Fingerprint::from(self.value.as_ref())
+    }
+}
+impl From<bip32::Fingerprint> for SerializedFingerprint {
+    fn from(value: bip32::Fingerprint) -> Self {
+        SerializedFingerprint {
+            value: value.into_bytes(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+#[cfg_attr(feature = "emulator", derive(serde::Serialize, serde::Deserialize))]
+pub struct SerializedXpub {
+    #[cbor(n(0))]
+    #[cfg_attr(
+        feature = "emulator",
+        serde(
+            serialize_with = "serde_bytevec::serialize",
+            deserialize_with = "serde_bytevec::deserialize_array"
+        )
+    )]
+    pub value: Box<ByteArray<78>>,
+}
+impl SerializedXpub {
+    pub fn as_xpub(&self) -> Result<bip32::ExtendedPubKey, bitcoin::util::bip32::Error> {
+        bip32::ExtendedPubKey::decode(self.value.deref().as_ref())
+    }
+}
+impl From<bip32::ExtendedPubKey> for SerializedXpub {
+    fn from(value: bip32::ExtendedPubKey) -> Self {
+        SerializedXpub {
+            value: Box::new(value.encode().into()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+#[cfg_attr(feature = "emulator", derive(serde::Serialize, serde::Deserialize))]
+pub struct SerializedDerivationPath {
+    #[cbor(n(0))]
+    pub value: Vec<u32>,
+}
+impl Into<bip32::DerivationPath> for SerializedDerivationPath {
+    fn into(self) -> bip32::DerivationPath {
+        bip32::DerivationPath::from_iter(
+            self.value.into_iter().map(|v| bip32::ChildNumber::from(v)),
+        )
+    }
+}
+impl From<bip32::DerivationPath> for SerializedDerivationPath {
+    fn from(value: bip32::DerivationPath) -> Self {
+        SerializedDerivationPath {
+            value: value.into_iter().map(|&v| v.into()).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+#[cfg_attr(feature = "emulator", derive(serde::Serialize, serde::Deserialize))]
+pub enum DescriptorVariant {
+    #[cbor(n(0))]
+    SingleSig(#[cbor(n(0))] SerializedDerivationPath),
+    #[cbor(n(1))]
+    MultiSig {
+        #[cbor(n(0))]
+        threshold: usize,
+        #[cbor(n(1))]
+        keys: Vec<MultisigKey>,
+        #[cbor(n(2))]
+        is_sorted: bool,
+    },
+}
+
+impl DescriptorVariant {
+    pub fn variant_name(&self) -> &'static str {
+        match self {
+            DescriptorVariant::SingleSig(_) => "Single-sig",
+            DescriptorVariant::MultiSig {
+                is_sorted: true, ..
+            } => "Sorted multi-sig",
+            DescriptorVariant::MultiSig {
+                is_sorted: false, ..
+            } => "Multi-sig",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+#[cfg_attr(feature = "emulator", derive(serde::Serialize, serde::Deserialize))]
+pub enum SetDescriptorVariant {
+    #[cbor(n(0))]
+    SingleSig(#[cbor(n(0))] ExtendedKey),
+    #[cbor(n(1))]
+    MultiSig {
+        #[cbor(n(0))]
+        threshold: usize,
+        #[cbor(n(1))]
+        keys: Vec<ExtendedKey>,
+        #[cbor(n(2))]
+        is_sorted: bool,
+    },
 }
 
 impl UnverifiedConfig {
-    pub fn upgrade(self, salt: [u8; 8]) -> (InitializedConfig, bip32::ExtendedPrivKey) {
+    pub fn upgrade(
+        self,
+        salt: [u8; 8],
+    ) -> (InitializedConfig, UnlockedConfig, bip32::ExtendedPrivKey) {
         let mnemonic = bip39::Mnemonic::from_entropy(&self.entropy.bytes).expect("Valid entropy");
         let xprv =
             bip32::ExtendedPrivKey::new_master(self.network, &mnemonic.to_seed_normalized(""))
                 .expect("Valid entropy");
-        (
-            InitializedConfig::new(
-                self.entropy,
-                xprv.into(),
-                self.network,
-                self.pair_code.as_deref(),
-                salt,
-            ),
-            xprv,
-        )
+
+        let unlocked = UnlockedConfig::new(
+            self.entropy,
+            xprv.into(),
+            self.descriptor,
+            self.network,
+            self.pair_code.as_deref(),
+            salt,
+        );
+
+        (unlocked.clone().lock(), unlocked, xprv)
     }
 }
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Encode, Decode, Clone)]
 pub struct InitializedConfig {
     #[cbor(n(0))]
     pub secret: MaybeEncrypted,
@@ -329,20 +532,12 @@ impl InitializedConfig {
     pub fn new(
         mnemonic: Entropy,
         cached_xprv: SerializedXprv,
+        descriptor: WalletDescriptor,
         network: bitcoin::Network,
         password: Option<&str>,
         salt: [u8; 8],
     ) -> Self {
-        let unlocked = UnlockedConfig {
-            secret: SecretData {
-                mnemonic,
-                cached_xprv,
-            },
-            network,
-            password: password.map(|p| Password::new(p, salt)).unwrap_or_default(),
-            nonce: 0,
-        };
-        unlocked.lock(password)
+        UnlockedConfig::new(mnemonic, cached_xprv, descriptor, network, password, salt).lock()
     }
 
     pub fn unlock(self, password: &str) -> Result<UnlockedConfig, ()> {
@@ -350,25 +545,14 @@ impl InitializedConfig {
             return Err(());
         }
 
-        let (secret, nonce) = match self.secret {
+        let (secret, encryption_key) = match self.secret {
             MaybeEncrypted::Unencrypted(inner) => (inner, None),
             MaybeEncrypted::Encrypted { data, nonce } => {
-                let mut hash = sha256::Hash::hash(password.as_bytes());
-                for _ in 0..DEFAULT_PASSWORD_ITERATIONS {
-                    hash = sha256::Hash::hash(hash.as_ref());
-                }
-
-                let mut cipher = Aes256Gcm::new_from_slice(hash.as_ref()).expect("Correct length");
-
-                let mut nonce_bytes = [0; 12];
-                nonce_bytes[..4].copy_from_slice(&nonce.to_be_bytes());
-                let nonce_bytes = Nonce::from_slice(&nonce_bytes);
-
-                cipher
-                    .decrypt(nonce_bytes, data.deref().as_ref())
-                    .map_err(|_| ())
-                    .and_then(|data| minicbor::decode::<SecretData>(&data).map_err(|_| ()))
-                    .map(|config| (config, Some(nonce)))?
+                let encryption_key = EncryptionKey::new(password, nonce);
+                (
+                    encryption_key.decrypt(data.deref().as_ref())?,
+                    Some(encryption_key),
+                )
             }
         };
 
@@ -376,45 +560,57 @@ impl InitializedConfig {
             secret,
             network: self.network,
             password: self.pair_code,
-            nonce: nonce.unwrap_or(0),
+            encryption_key,
         })
     }
 }
 
+#[derive(Clone)]
 pub struct UnlockedConfig {
     pub secret: SecretData,
     pub network: bitcoin::Network,
     pub password: Password,
-    nonce: u32,
+    encryption_key: Option<EncryptionKey>,
 }
 
 impl UnlockedConfig {
-    pub fn lock(self, password: Option<&str>) -> InitializedConfig {
-        if let Some(plaintext_pwd) = password {
-            debug_assert!(self.password.check(plaintext_pwd));
+    pub fn new(
+        mnemonic: Entropy,
+        cached_xprv: SerializedXprv,
+        descriptor: WalletDescriptor,
+        network: bitcoin::Network,
+        password: Option<&str>,
+        salt: [u8; 8],
+    ) -> Self {
+        UnlockedConfig {
+            secret: SecretData {
+                mnemonic,
+                cached_xprv,
+                descriptor,
+            },
+            network,
+            password: password.map(|p| Password::new(p, salt)).unwrap_or_default(),
+            encryption_key: password.map(|p| EncryptionKey::new(p, 0)),
         }
+    }
 
-        let secret = match password {
+    pub fn from_secret_data_unencrypted(secret: SecretData, network: bitcoin::Network) -> Self {
+        UnlockedConfig {
+            secret,
+            network,
+            password: Default::default(),
+            encryption_key: None,
+        }
+    }
+
+    pub fn lock(mut self) -> InitializedConfig {
+        let secret = match self.encryption_key {
             None => MaybeEncrypted::Unencrypted(self.secret),
-            Some(password) => {
-                let mut hash = sha256::Hash::hash(password.as_bytes());
-                for _ in 0..DEFAULT_PASSWORD_ITERATIONS {
-                    hash = sha256::Hash::hash(hash.as_ref());
-                }
-
-                let mut cipher = Aes256Gcm::new_from_slice(hash.as_ref()).expect("Correct length");
-
-                let nonce = self.nonce + 1;
-                let mut nonce_bytes = [0; 12];
-                nonce_bytes[..4].copy_from_slice(&nonce.to_be_bytes());
-                let nonce_bytes = Nonce::from_slice(&nonce_bytes);
-
+            Some(ref mut encryption_key) => {
                 let data = minicbor::to_vec(self.secret).expect("Always serializable");
-
-                cipher
-                    .encrypt(nonce_bytes, data.as_ref())
-                    .map_err(|_| ())
-                    .map(|data| MaybeEncrypted::Encrypted {
+                encryption_key
+                    .encrypt(&data)
+                    .map(|(data, nonce)| MaybeEncrypted::Encrypted {
                         data: data.into(),
                         nonce,
                     })
@@ -457,7 +653,7 @@ mod cbor_bitcoin_network {
     }
 }
 
-#[derive(Debug, Default, Encode, Decode)]
+#[derive(Debug, Default, Encode, Decode, Clone)]
 pub struct Password {
     #[cbor(n(0))]
     pub hash: [u8; 32],
@@ -491,15 +687,67 @@ impl Password {
     }
 }
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Clone)]
+pub struct EncryptionKey {
+    key: [u8; 32],
+    nonce: u32,
+}
+
+impl EncryptionKey {
+    pub fn new(password: &str, nonce: u32) -> Self {
+        let mut hash = sha256::Hash::hash(password.as_bytes());
+        for _ in 0..DEFAULT_PASSWORD_ITERATIONS {
+            hash = sha256::Hash::hash(hash.as_ref());
+        }
+
+        EncryptionKey {
+            key: hash.into_inner(),
+            nonce,
+        }
+    }
+
+    fn get_cipher(&self) -> impl aes_gcm::AeadCore + aes_gcm::aead::AeadMut {
+        Aes256Gcm::new_from_slice(&self.key).expect("Correct length")
+    }
+
+    fn get_nonce<T: aes_gcm::aes::cipher::ArrayLength<u8>>(&self) -> aes_gcm::Nonce<T> {
+        let mut nonce_bytes = [0; 12];
+        nonce_bytes[..4].copy_from_slice(&self.nonce.to_be_bytes());
+        Nonce::clone_from_slice(&nonce_bytes)
+    }
+
+    pub fn decrypt(&self, data: &[u8]) -> Result<SecretData, ()> {
+        let nonce = self.get_nonce();
+
+        self.get_cipher()
+            .decrypt(&nonce, data)
+            .map_err(|_| ())
+            .and_then(|data| minicbor::decode::<SecretData>(&data).map_err(|_| ()))
+            .map(|config| config)
+    }
+
+    pub fn encrypt(&mut self, data: &[u8]) -> Result<(Vec<u8>, u32), ()> {
+        self.nonce += 1;
+        let nonce = self.get_nonce();
+
+        self.get_cipher()
+            .encrypt(&nonce, data)
+            .map_err(|_| ())
+            .map(|data| (data, self.nonce))
+    }
+}
+
+#[derive(Debug, Encode, Decode, Clone)]
 pub struct SecretData {
     #[cbor(n(0))]
     pub mnemonic: Entropy,
     #[cbor(n(1))]
     pub cached_xprv: SerializedXprv,
+    #[cbor(n(2))]
+    pub descriptor: WalletDescriptor,
 }
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Encode, Decode, Clone)]
 pub enum MaybeEncrypted {
     #[cbor(n(0))]
     Encrypted {
@@ -689,6 +937,17 @@ pub enum Request {
     Ping,
     #[cbor(n(13))]
     Resume,
+    #[cbor(n(14))]
+    GetXpub(#[cbor(n(0))] SerializedDerivationPath),
+    #[cbor(n(15))]
+    SetDescriptor {
+        #[cbor(n(0))]
+        variant: SetDescriptorVariant,
+        #[cbor(n(1))]
+        script_type: ScriptType,
+        #[cbor(n(2))]
+        bsms: Option<BsmsRound2>,
+    },
 }
 
 #[derive(Clone, Debug, Encode, Decode)]
@@ -728,6 +987,68 @@ pub enum Reply {
     Locked,
     #[cbor(n(13))]
     Unverified,
+    #[cbor(n(14))]
+    Xpub {
+        #[cbor(n(0))]
+        xpub: String,
+        #[cbor(n(1))]
+        bsms: BsmsRound1,
+    },
+}
+
+#[derive(Clone, Debug, Encode, Decode)]
+#[cfg_attr(feature = "emulator", derive(serde::Serialize, serde::Deserialize))]
+pub struct BsmsRound1 {
+    #[cbor(n(0))]
+    pub version: String,
+    #[cbor(n(1))]
+    pub token: String,
+    #[cbor(n(2))]
+    pub key_name: String,
+    #[cbor(n(3))]
+    #[cfg_attr(
+        feature = "emulator",
+        serde(
+            serialize_with = "serde_bytevec::serialize",
+            deserialize_with = "serde_bytevec::deserialize_array"
+        )
+    )]
+    pub signature: Box<ByteArray<65>>,
+}
+
+impl BsmsRound1 {
+    pub fn new(
+        version: &str,
+        token: &str,
+        key_name: String,
+        xpub: &str,
+        private_key: &bitcoin::secp256k1::SecretKey,
+        ctx: &bitcoin::secp256k1::Secp256k1<bitcoin::secp256k1::All>,
+    ) -> Self {
+        let message = alloc::format!("BSMS {}\n{}\n{}\n{}", version, token, xpub, key_name);
+        let message = bitcoin::secp256k1::Message::from_slice(
+            bitcoin::util::misc::signed_msg_hash(&message).as_inner(),
+        )
+        .expect("Valid data length");
+
+        let signature = ctx.sign_ecdsa_recoverable(&message, &private_key);
+        let signature = bitcoin::util::misc::MessageSignature::new(signature, true);
+        let signature = signature.serialize();
+
+        BsmsRound1 {
+            version: version.into(),
+            token: token.into(),
+            key_name,
+            signature: Box::new(signature.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Encode, Decode)]
+#[cfg_attr(feature = "emulator", derive(serde::Serialize, serde::Deserialize))]
+pub struct BsmsRound2 {
+    #[cbor(n(0))]
+    pub first_address: String,
 }
 
 #[cfg(feature = "emulator")]

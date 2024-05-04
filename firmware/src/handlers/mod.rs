@@ -18,12 +18,12 @@
 use alloc::rc::Rc;
 use alloc::string::String;
 use core::cell::RefCell;
-use gui::ErrorPage;
 
 use futures::pin_mut;
 use futures::prelude::*;
 
-use gui::{ConfirmBarPage, MainContent, Page};
+use gui::{ConfirmBarPage, ErrorPage, MainContent, Page};
+use model::bitcoin::util::bip32;
 use model::{FwUpdateHeader, NumWordsMnemonic, Reply};
 
 use crate::{hw, hw_common, Error};
@@ -36,7 +36,34 @@ mod fwupdate;
 mod idle;
 mod init;
 
-#[derive(Debug)]
+pub struct PortalWallet {
+    pub bdk: bdk::Wallet,
+    pub xprv: bip32::ExtendedPrivKey,
+    pub config: model::UnlockedConfig,
+}
+
+impl PortalWallet {
+    pub fn new(
+        bdk: bdk::Wallet,
+        xprv: bip32::ExtendedPrivKey,
+        config: model::UnlockedConfig,
+    ) -> Self {
+        PortalWallet { bdk, xprv, config }
+    }
+}
+
+impl core::ops::Deref for PortalWallet {
+    type Target = bdk::Wallet;
+    fn deref(&self) -> &Self::Target {
+        &self.bdk
+    }
+}
+impl core::ops::DerefMut for PortalWallet {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.bdk
+    }
+}
+
 pub enum CurrentState {
     /// Power on reset
     POR,
@@ -59,18 +86,33 @@ pub enum CurrentState {
         password: Option<String>,
     },
     /// Device ready
-    Idle { wallet: Rc<bdk::Wallet> },
+    Idle { wallet: Rc<PortalWallet> },
     /// Waiting to receive the PSBT
-    WaitingForPsbt { wallet: Rc<bdk::Wallet> },
+    WaitingForPsbt { wallet: Rc<PortalWallet> },
     /// Sign request
     SignPsbt {
-        wallet: Rc<bdk::Wallet>,
+        wallet: Rc<PortalWallet>,
         psbt: alloc::vec::Vec<u8>,
     },
     /// Display an address
-    DisplayAddress { wallet: Rc<bdk::Wallet>, index: u32 },
+    DisplayAddress {
+        wallet: Rc<PortalWallet>,
+        index: u32,
+    },
     /// Request the public descriptor
-    PublicDescriptor { wallet: Rc<bdk::Wallet> },
+    PublicDescriptor { wallet: Rc<PortalWallet> },
+    /// Request to set a new descriptor
+    SetDescriptor {
+        wallet: Rc<PortalWallet>,
+        variant: model::SetDescriptorVariant,
+        script_type: model::ScriptType,
+        bsms: Option<model::BsmsRound2>,
+    },
+    /// Request a derived XPUB
+    GetXpub {
+        wallet: Rc<PortalWallet>,
+        derivation_path: bip32::DerivationPath,
+    },
     /// Updating firmware
     UpdatingFw { header: FwUpdateHeader },
     /// Error
@@ -207,6 +249,26 @@ pub async fn dispatch_handler(
         CurrentState::PublicDescriptor { ref mut wallet } => {
             bitcoin::handle_public_descriptor_request(wallet, events, peripherals).await
         }
+        CurrentState::SetDescriptor {
+            ref mut wallet,
+            variant,
+            script_type,
+            bsms,
+        } => {
+            bitcoin::handle_set_descriptor_request(
+                wallet,
+                variant,
+                script_type,
+                bsms,
+                events,
+                peripherals,
+            )
+            .await
+        }
+        CurrentState::GetXpub {
+            ref mut wallet,
+            derivation_path,
+        } => bitcoin::handle_get_xpub_request(wallet, derivation_path, events, peripherals).await,
         CurrentState::UpdatingFw { header } => {
             fwupdate::handle_begin_fw_update(&header, events, peripherals).await
         }

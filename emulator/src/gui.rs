@@ -266,6 +266,43 @@ pub fn init_gui(
         });
     });
 
+    let (sdk_cloned, log_cloned) = (Arc::clone(&sdk), log.clone());
+    emulator_gui.get_xpub_btn.set_callback(move |_| {
+        let value = app::widget_from_id::<Input>("get_xpub").unwrap().value();
+
+        let sdk_cloned = sdk_cloned.clone();
+        let log_cloned = log_cloned.clone();
+        tokio::spawn(async move {
+            log_cloned.send(format!("> GetXpub({})", value)).unwrap();
+            match sdk_cloned.get_xpub(value.parse().unwrap()).await {
+                Ok(v) => log_cloned.send(format!("< {:?}", v)).unwrap(),
+                Err(e) => log::warn!("Get xpub err: {:?}", e),
+            }
+        });
+    });
+
+    let (sdk_cloned, log_cloned) = (Arc::clone(&sdk), log.clone());
+    emulator_gui.set_descriptor_btn.set_callback(move |_| {
+        let value = app::widget_from_id::<Input>("set_descriptor")
+            .unwrap()
+            .value();
+
+        let sdk_cloned = sdk_cloned.clone();
+        let log_cloned = log_cloned.clone();
+        tokio::spawn(async move {
+            log_cloned
+                .send(format!("> SetDescriptor({})", value))
+                .unwrap();
+            match sdk_cloned
+                .set_descriptor(value, None)
+                .await
+            {
+                Ok(v) => log_cloned.send(format!("< {:?}", v)).unwrap(),
+                Err(e) => log::warn!("Set descriptor err: {:?}", e),
+            }
+        });
+    });
+
     emulator_gui.window.end();
     emulator_gui.window.show();
 

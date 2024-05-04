@@ -26,7 +26,7 @@ use super::*;
 use crate::Error;
 
 pub async fn handle_idle(
-    wallet: &mut Rc<bdk::Wallet>,
+    wallet: &mut Rc<PortalWallet>,
     mut events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
 ) -> Result<CurrentState, Error> {
@@ -67,6 +67,24 @@ pub async fn handle_idle(
             Some(model::Request::PublicDescriptor) => {
                 break Ok(CurrentState::PublicDescriptor {
                     wallet: Rc::clone(wallet),
+                });
+            }
+            Some(model::Request::GetXpub(derivation_path)) => {
+                break Ok(CurrentState::GetXpub {
+                    wallet: Rc::clone(wallet),
+                    derivation_path: derivation_path.into(),
+                });
+            }
+            Some(model::Request::SetDescriptor {
+                variant,
+                script_type,
+                bsms,
+            }) => {
+                break Ok(CurrentState::SetDescriptor {
+                    wallet: Rc::clone(wallet),
+                    variant,
+                    script_type,
+                    bsms,
                 });
             }
             Some(model::Request::BeginFwUpdate(header)) => {

@@ -77,3 +77,8 @@ impl<T> From<bdk::wallet::NewError<T>> for Error {
         Error::Wallet
     }
 }
+impl From<bdk::descriptor::DescriptorError> for Error {
+    fn from(_: bdk::descriptor::DescriptorError) -> Self {
+        Error::Wallet
+    }
+}

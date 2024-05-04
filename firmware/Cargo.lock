@@ -503,6 +503,7 @@ name = "firmware"
 version = "0.1.0"
 dependencies = [
  "bdk",
+ "bitcoin",
  "bitcoin_hashes",
  "cortex-m",
  "cortex-m-log",

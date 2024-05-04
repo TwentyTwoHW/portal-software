@@ -23,7 +23,7 @@ use alloc::vec::Vec;
 use futures::prelude::*;
 
 use bdk::bitcoin::util::{bip32, psbt, taproot};
-use bdk::bitcoin::{Address, Amount, PublicKey, TxOut, XOnlyPublicKey};
+use bdk::bitcoin::{Address, Amount, PublicKey, XOnlyPublicKey};
 use bdk::descriptor::{
     DerivedDescriptor, DescriptorError, DescriptorXKey, ExtendedDescriptor, TapKeyOrigins, Wildcard,
 };
@@ -32,7 +32,14 @@ use bdk::miniscript::descriptor::{DescriptorType, InnerXKey};
 use bdk::miniscript::{DescriptorPublicKey, ForEachKey};
 use bdk::HdKeyPaths;
 
-use gui::{LoadingPage, Page, SigningTxPage, SummaryPage, TxOutputPage, TxSummaryPage};
+use gui::{
+    ConfirmSetDescriptorAddressPage, GenericTwoLinePage, LoadingPage, Page, SigningTxPage,
+    SummaryPage, TxOutputPage, TxSummaryPage,
+};
+use model::{
+    DescriptorVariant, ExtendedKey, MultisigKey, ScriptType, SerializedDerivationPath,
+    SetDescriptorVariant, WalletDescriptor,
+};
 
 use super::*;
 use crate::Error;
@@ -82,7 +89,7 @@ impl CurrentSignatures {
 }
 
 pub async fn handle_sign_request(
-    wallet: &mut Rc<bdk::Wallet>,
+    wallet: &mut Rc<PortalWallet>,
     psbt: &[u8],
     mut events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
@@ -137,12 +144,10 @@ pub async fn handle_sign_request(
 
     peripherals.tsc_enabled.enable();
 
-    let secp = secp256k1::Secp256k1::new();
-
     for (out, psbt_out) in psbt.unsigned_tx.output.iter().zip(psbt.outputs.iter()) {
         if wallet
             .get_descriptor_for_keychain(bdk::KeychainKind::Internal)
-            .derive_from_psbt_output(psbt_out, Some(out), &secp)
+            .derive_from_psbt_output(psbt_out, &wallet.secp_ctx())
             .is_some()
         {
             // Hide our change outputs
@@ -185,21 +190,29 @@ pub async fn handle_sign_request(
         .unwrap();
 
     let diff = CurrentSignatures::diff(&current_sigs, psbt);
-    let empty_tx = bdk::bitcoin::Transaction {
-        input: alloc::vec![bdk::bitcoin::TxIn::default(); diff.len()],
-        output: alloc::vec![],
-        lock_time: bdk::bitcoin::PackedLockTime::ZERO,
-        version: 0,
-    };
-    let mut empty_psbt =
-        psbt::PartiallySignedTransaction::from_unsigned_tx(empty_tx).expect("Always succeed");
-    empty_psbt.inputs = diff;
 
-    let psbt = bdk::bitcoin::consensus::encode::serialize(&empty_psbt);
+    #[rustfmt::skip]
+    let mut empty_psbt = alloc::vec![
+        0x70, 0x73, 0x62, 0x74, 0xFF, // PSBT magic
+            0x01, 0x00, 0x33, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, // Empty raw tx
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0x00,
+            0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00 // End global map
+    ];
+
+    use bdk::bitcoin::consensus::encode::Encodable;
+    for input in &diff {
+        input
+            .consensus_encode(&mut empty_psbt)
+            .expect("Encoding succeeds");
+    }
 
     peripherals
         .nfc
-        .send(model::Reply::SignedPsbt(psbt.into()))
+        .send(model::Reply::SignedPsbt(empty_psbt.into()))
         .await
         .unwrap();
 
@@ -211,7 +224,7 @@ pub async fn handle_sign_request(
 }
 
 pub async fn handle_waiting_for_psbt(
-    wallet: &mut Rc<bdk::Wallet>,
+    wallet: &mut Rc<PortalWallet>,
     mut events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
 ) -> Result<CurrentState, Error> {
@@ -245,7 +258,7 @@ pub async fn handle_waiting_for_psbt(
 }
 
 pub async fn handle_display_address_request(
-    wallet: &mut Rc<bdk::Wallet>,
+    wallet: &mut Rc<PortalWallet>,
     index: u32,
     mut events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
@@ -284,7 +297,7 @@ pub async fn handle_display_address_request(
 }
 
 pub async fn handle_public_descriptor_request(
-    wallet: &mut Rc<bdk::Wallet>,
+    wallet: &mut Rc<PortalWallet>,
     mut events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
 ) -> Result<CurrentState, Error> {
@@ -329,6 +342,326 @@ pub async fn handle_public_descriptor_request(
     })
 }
 
+pub async fn handle_get_xpub_request(
+    wallet: &mut Rc<PortalWallet>,
+    derivation_path: bip32::DerivationPath,
+    mut events: impl Stream<Item = Event> + Unpin,
+    peripherals: &mut HandlerPeripherals,
+) -> Result<CurrentState, Error> {
+    log::info!("handle_get_xpub_request");
+
+    peripherals
+        .nfc
+        .send(model::Reply::DelayedReply)
+        .await
+        .unwrap();
+
+    peripherals.tsc_enabled.enable();
+
+    let display_path = derivation_path.to_string();
+    let mut page = GenericTwoLinePage::new(
+        "Export public key?",
+        &display_path,
+        "HOLD BTN TO CONFIRM",
+        100,
+    );
+    page.init_display(&mut peripherals.display)?;
+    page.draw_to(&mut peripherals.display)?;
+    peripherals.display.flush()?;
+    manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+
+    let derived = wallet
+        .xprv
+        .derive_priv(wallet.secp_ctx(), &derivation_path)
+        .map_err(|_| Error::Wallet)?;
+    let key = DescriptorXKey {
+        origin: Some((wallet.xprv.fingerprint(wallet.secp_ctx()), derivation_path)),
+        xkey: bip32::ExtendedPubKey::from_priv(wallet.secp_ctx(), &derived),
+        derivation_path: Default::default(),
+        wildcard: Wildcard::None,
+    };
+    let xpub = DescriptorPublicKey::XPub(key).to_string();
+
+    let bsms = model::BsmsRound1::new(
+        "1.0",
+        "00",
+        alloc::format!(
+            "Portal {:08X}",
+            u32::from_be_bytes(wallet.xprv.fingerprint(wallet.secp_ctx()).to_bytes())
+        ),
+        &xpub,
+        &derived.private_key,
+        wallet.secp_ctx(),
+    );
+
+    peripherals
+        .nfc
+        .send(model::Reply::Xpub { xpub, bsms })
+        .await
+        .unwrap();
+
+    Ok(CurrentState::Idle {
+        wallet: Rc::clone(wallet),
+    })
+}
+
+pub async fn handle_set_descriptor_request(
+    wallet: &mut Rc<PortalWallet>,
+    variant: SetDescriptorVariant,
+    script_type: ScriptType,
+    bsms: Option<model::BsmsRound2>,
+    mut events: impl Stream<Item = Event> + Unpin,
+    peripherals: &mut HandlerPeripherals,
+) -> Result<CurrentState, Error> {
+    let is_local_key = |key: &ExtendedKey| -> Result<bool, String> {
+        let xpub = key.key.as_xpub().map_err(|_| "Invalid xpub".to_string())?;
+
+        // The network must match
+        if (xpub.network == model::bitcoin::Network::Bitcoin)
+            != (wallet.network() == model::bitcoin::Network::Bitcoin)
+        {
+            return Err("Invalid key network".to_string());
+        }
+
+        // The fingerprint should match
+        let fingerprint = match key.origin.as_ref() {
+            Some((fingerprint, _)) => fingerprint.clone().into(),
+            _ => xpub.fingerprint(),
+        };
+        if fingerprint != wallet.xprv.fingerprint(wallet.secp_ctx()) {
+            return Ok(false);
+        }
+
+        // The derivation path after the key cannot contain any hardened steps
+        if Into::<bip32::DerivationPath>::into(key.path.clone())
+            .into_iter()
+            .any(|child| child.is_hardened())
+        {
+            return Ok(false);
+        }
+
+        // The xpub provided must match our xprv derived
+        let origin_path: bip32::DerivationPath = key
+            .origin
+            .as_ref()
+            .map(|(_, path)| path.clone().into())
+            .unwrap_or_default();
+        let derived = wallet
+            .xprv
+            .derive_priv(wallet.secp_ctx(), &origin_path)
+            .map_err(|_| "Error deriving key".to_string())?;
+        let derived = bip32::ExtendedPubKey::from_priv(wallet.secp_ctx(), &derived);
+        Ok(derived.encode() == xpub.encode())
+    };
+
+    log::info!("handle_set_descriptor_request");
+
+    peripherals
+        .nfc
+        .send(model::Reply::DelayedReply)
+        .await
+        .unwrap();
+
+    let checks_result = (|| -> Result<_, String> {
+        let variant = match variant {
+            SetDescriptorVariant::SingleSig(key) if is_local_key(&key)? => {
+                DescriptorVariant::SingleSig(key.full_path().into())
+            }
+            SetDescriptorVariant::SingleSig(_) => return Err("Local key missing".to_string()),
+            SetDescriptorVariant::MultiSig {
+                threshold,
+                keys,
+                is_sorted,
+            } => {
+                if !is_sorted {
+                    return Err("Unsorted multisig descriptors are not supported yet".to_string());
+                }
+
+                if threshold > keys.len() {
+                    return Err("Invalid threshold for multisig".to_string());
+                }
+
+                let keys: Vec<MultisigKey> = keys
+                    .into_iter()
+                    .map(|key| {
+                        if is_local_key(&key)? {
+                            Ok(MultisigKey::Local(key.full_path().into()))
+                        } else {
+                            Ok(MultisigKey::External(key))
+                        }
+                    })
+                    .collect::<Result<_, String>>()?;
+
+                // Make sure our key only appears somewhere
+                if !keys.iter().any(|k| matches!(k, MultisigKey::Local(_))) {
+                    return Err("Local key not missing".into());
+                }
+
+                DescriptorVariant::MultiSig {
+                    threshold,
+                    keys,
+                    is_sorted,
+                }
+            }
+        };
+
+        let mut new_config = wallet.config.clone();
+        new_config.secret.descriptor = WalletDescriptor {
+            variant,
+            script_type,
+        };
+
+        let mut new_wallet =
+            super::init::make_wallet_from_xprv(wallet.xprv, wallet.network(), new_config)
+                .map_err(|_| "Unable to create wallet")?;
+        let wallet_address = new_wallet
+            .get_address(bdk::wallet::AddressIndex::Peek(0))
+            .address;
+
+        if let Some(bsms) = bsms {
+            if bsms.first_address != wallet_address.to_string() {
+                return Err("BSMS address doesn't match".to_string());
+            }
+        }
+
+        Ok((new_wallet, wallet_address))
+    })();
+
+    let (new_wallet, first_address) = match checks_result {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!("Checks failed: {}", e);
+
+            peripherals.nfc.send(model::Reply::Error(e)).await.unwrap();
+            return Ok(CurrentState::Idle {
+                wallet: Rc::clone(wallet),
+            });
+        }
+    };
+
+    peripherals.tsc_enabled.enable();
+
+    let mut page = GenericTwoLinePage::new(
+        "Wallet policy",
+        new_wallet.config.secret.descriptor.variant.variant_name(),
+        "HOLD BTN FOR NEXT PAGE",
+        50,
+    );
+    page.init_display(&mut peripherals.display)?;
+    page.draw_to(&mut peripherals.display)?;
+    peripherals.display.flush()?;
+    manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+
+    let mut page = GenericTwoLinePage::new(
+        "Address type",
+        new_wallet.config.secret.descriptor.script_type.display_name(),
+        "HOLD BTN FOR NEXT PAGE",
+        50,
+    );
+    page.init_display(&mut peripherals.display)?;
+    page.draw_to(&mut peripherals.display)?;
+    peripherals.display.flush()?;
+    manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+
+    match &new_wallet.config.secret.descriptor.variant {
+        DescriptorVariant::SingleSig(path) => {
+            let path_display =
+                <SerializedDerivationPath as Into<bip32::DerivationPath>>::into(path.clone())
+                    .to_string();
+            let mut page = GenericTwoLinePage::new(
+                "Key derivation",
+                &path_display,
+                "HOLD BTN FOR NEXT PAGE",
+                50,
+            );
+            page.init_display(&mut peripherals.display)?;
+            page.draw_to(&mut peripherals.display)?;
+            peripherals.display.flush()?;
+            manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+        }
+        DescriptorVariant::MultiSig {
+            threshold, keys, ..
+        } => {
+            let threshold_display = alloc::format!("{} of {}", threshold, keys.len());
+            let mut page = GenericTwoLinePage::new(
+                "Threshold",
+                &threshold_display,
+                "HOLD BTN FOR NEXT PAGE",
+                50,
+            );
+            page.init_display(&mut peripherals.display)?;
+            page.draw_to(&mut peripherals.display)?;
+            peripherals.display.flush()?;
+            manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+
+            for (i, key) in keys.iter().enumerate() {
+                let key_name = alloc::format!("Key #{}", i + 1);
+
+                let second_line = match key {
+                    MultisigKey::Local(path) => {
+                        alloc::format!(
+                            "This device\n{}",
+                            <SerializedDerivationPath as Into<bip32::DerivationPath>>::into(
+                                path.clone()
+                            )
+                        )
+                    }
+                    MultisigKey::External(key) => {
+                        let fingerprint = key
+                            .origin
+                            .as_ref()
+                            .map(|(f, _)| f.clone().into())
+                            .unwrap_or_else(|| key.key.as_xpub().unwrap().fingerprint());
+                        alloc::format!(
+                            "Key {}\n{}",
+                            fingerprint,
+                            <SerializedDerivationPath as Into<bip32::DerivationPath>>::into(
+                                key.full_path()
+                            )
+                        )
+                    }
+                };
+
+                let mut page =
+                    GenericTwoLinePage::new(&key_name, &second_line, "HOLD BTN FOR NEXT PAGE", 50);
+                page.init_display(&mut peripherals.display)?;
+                page.draw_to(&mut peripherals.display)?;
+                peripherals.display.flush()?;
+                manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+            }
+        }
+    }
+
+    log::debug!("First address: {}", first_address);
+    let address_str = first_address.to_string();
+    let mut page = ConfirmSetDescriptorAddressPage::new(&address_str);
+    page.init_display(&mut peripherals.display)?;
+    page.draw_to(&mut peripherals.display)?;
+    peripherals.display.flush()?;
+    manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+
+    let mut page = SummaryPage::new("Save new\nconfiguration?", "HOLD BTN TO APPLY CHANGES");
+    page.init_display(&mut peripherals.display)?;
+    page.draw_to(&mut peripherals.display)?;
+    peripherals.display.flush()?;
+    manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+
+    let encrypted_config = new_wallet.config.clone().lock();
+    // log::debug!("Saving new config: {:?}", encrypted_config);
+    crate::config::write_config(
+        &mut peripherals.flash,
+        &model::Config::Initialized(encrypted_config),
+    )
+    .await?;
+    log::debug!("Config saved!");
+
+    peripherals.nfc.send(model::Reply::Ok).await.unwrap();
+
+    Ok(CurrentState::Idle {
+        wallet: Rc::new(new_wallet),
+    })
+}
+
 // Taken from BDK
 pub(crate) trait DescriptorMeta {
     fn is_witness(&self) -> bool;
@@ -354,7 +687,6 @@ pub(crate) trait DescriptorMeta {
     fn derive_from_psbt_output<'s>(
         &self,
         psbt_output: &psbt::Output,
-        utxo: Option<&'s TxOut>,
         secp: &'s SecpCtx,
     ) -> Option<DerivedDescriptor>;
 }
@@ -516,7 +848,6 @@ impl DescriptorMeta for ExtendedDescriptor {
     fn derive_from_psbt_output<'s>(
         &self,
         psbt_output: &psbt::Output,
-        utxo: Option<&'s TxOut>,
         secp: &'s SecpCtx,
     ) -> Option<DerivedDescriptor> {
         if let Some(derived) = self.derive_from_hd_keypaths(&psbt_output.bip32_derivation, secp) {
@@ -526,41 +857,7 @@ impl DescriptorMeta for ExtendedDescriptor {
         {
             return Some(derived);
         }
-        if self.has_wildcard() {
-            // We can't try to bruteforce the derivation index, exit here
-            return None;
-        }
 
-        let descriptor = self.at_derivation_index(0);
-        match descriptor.desc_type() {
-            // TODO: add pk() here
-            DescriptorType::Pkh
-            | DescriptorType::Wpkh
-            | DescriptorType::ShWpkh
-            | DescriptorType::Tr
-                if utxo.is_some()
-                    && descriptor.script_pubkey() == utxo.as_ref().unwrap().script_pubkey =>
-            {
-                Some(descriptor)
-            }
-            DescriptorType::Bare | DescriptorType::Sh | DescriptorType::ShSortedMulti
-                if psbt_output.redeem_script.is_some()
-                    && &descriptor.explicit_script().unwrap()
-                        == psbt_output.redeem_script.as_ref().unwrap() =>
-            {
-                Some(descriptor)
-            }
-            DescriptorType::Wsh
-            | DescriptorType::ShWsh
-            | DescriptorType::ShWshSortedMulti
-            | DescriptorType::WshSortedMulti
-                if psbt_output.witness_script.is_some()
-                    && &descriptor.explicit_script().unwrap()
-                        == psbt_output.witness_script.as_ref().unwrap() =>
-            {
-                Some(descriptor)
-            }
-            _ => None,
-        }
+        None
     }
 }

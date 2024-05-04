@@ -27,7 +27,14 @@ use futures::prelude::*;
 use futures::stream::Peekable;
 
 use inner_logic::FutureError;
-use model::{InitializationStatus, NumWordsMnemonic, Reply, Request};
+
+use miniscript::TranslatePk;
+
+use model::bitcoin::util::bip32;
+use model::{
+    BsmsRound2, ExtendedKey, InitializationStatus, NumWordsMnemonic, Reply, Request, ScriptType,
+    SetDescriptorVariant,
+};
 
 mod inner_logic;
 
@@ -48,7 +55,8 @@ const FLASH_SIZE: u32 = 510 * 2048;
 const FLASH_END: u32 = FLASH_BASE + FLASH_SIZE;
 
 #[cfg(feature = "bindings")]
-pub use model::bitcoin::{Address, Network};
+pub use model::bitcoin::{Address, Network, util::bip32::DerivationPath};
+
 
 #[cfg_attr(feature = "bindings", derive(uniffi::Object))]
 pub struct PortalSdk {
@@ -257,6 +265,7 @@ impl PortalSdk {
 
         let mut psbt: model::bitcoin::util::psbt::Psbt =
             deserialize(psbt.deref()).map_err(|_| SdkError::CommunicationError)?;
+        dbg!(base64::encode(&serialize(&psbt)));
         psbt.unsigned_tx = original_psbt.unsigned_tx.clone();
 
         original_psbt
@@ -265,6 +274,169 @@ impl PortalSdk {
         let original_psbt = serialize(&original_psbt);
 
         Ok(base64::encode(&original_psbt))
+    }
+
+    pub async fn get_xpub(&self, path: bip32::DerivationPath) -> Result<DeviceXpub, SdkError> {
+        let (xpub, bsms) = send_with_retry!(self.requests, Request::GetXpub(path.clone().into()), Ok(Reply::Xpub { xpub, bsms }) => break Ok((xpub, bsms)))?;
+
+        Ok(DeviceXpub {
+            xpub,
+            bsms: GetXpubBsmsData {
+                version: bsms.version,
+                token: bsms.token,
+                key_name: bsms.key_name,
+                signature: base64::encode(bsms.signature.deref().as_ref()),
+            },
+        })
+    }
+
+    pub async fn set_descriptor(
+        &self,
+        descriptor: String,
+        bsms: Option<SetDescriptorBsmsData>,
+    ) -> Result<(), SdkError> {
+        use miniscript::{descriptor::*, Miniscript};
+        use std::str::FromStr;
+
+        fn map_key(pk: &DescriptorPublicKey) -> Result<ExtendedKey, SdkError> {
+            let pk = match pk {
+                DescriptorPublicKey::Single(_) => {
+                    return Err(SdkError::UnsupportedDescriptor {
+                        cause: "Single public keys are not supported".to_string(),
+                    })
+                }
+                DescriptorPublicKey::XPub(xpub) => xpub,
+            };
+
+            if pk.wildcard != Wildcard::Unhardened {
+                return Err(SdkError::UnsupportedDescriptor {
+                    cause: "Invalid wildcard".to_string(),
+                });
+            }
+
+            Ok(ExtendedKey {
+                key: pk.xkey.into(),
+                origin: pk
+                    .origin
+                    .as_ref()
+                    .map(|(f, d)| ((*f).into(), d.clone().into())),
+                path: pk.derivation_path.clone().into(),
+            })
+        }
+        fn make_multisig(
+            k: usize,
+            pks: &[DescriptorPublicKey],
+            is_sorted: bool,
+        ) -> Result<SetDescriptorVariant, SdkError> {
+            if !is_sorted {
+                return Err(SdkError::UnsupportedDescriptor {
+                    cause: "Only `sortedmulti` descriptors are supported".into(),
+                });
+            }
+
+            let keys = pks
+                .into_iter()
+                .map(|pk| map_key(pk))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(SetDescriptorVariant::MultiSig {
+                threshold: k,
+                keys,
+                is_sorted,
+            })
+        }
+        fn process_wsh(wsh: &Wsh<DescriptorPublicKey>) -> Result<SetDescriptorVariant, SdkError> {
+            match wsh.as_inner() {
+                WshInner::Ms(Miniscript {
+                    node: miniscript::Terminal::Multi(k, pks),
+                    ..
+                }) => make_multisig(*k, pks, false),
+                WshInner::SortedMulti(SortedMultiVec { k, pks, .. }) => {
+                    make_multisig(*k, pks, true)
+                }
+                _ => {
+                    return Err(SdkError::UnsupportedDescriptor {
+                        cause: "Arbitrary descriptors are not supported".to_string(),
+                    })
+                }
+            }
+        }
+
+        let (descriptor, bsms) = if let Some(bsms) = bsms {
+            if bsms.version != "1.0" {
+                return Err(SdkError::UnsupportedDescriptor {
+                    cause: "Unsupported BSMS version".to_string(),
+                });
+            }
+
+            // We only support one specific path-restriction, which is `/0/*` for external and `/1/*` for internal
+            if bsms.path_restrictions != "/0/*,/1/*" {
+                return Err(SdkError::UnsupportedDescriptor {
+                    cause: "Only `/0/*,/1/*` is supported as path restriction".to_string(),
+                });
+            }
+
+            // If we have BSMS data we expect path restrictions in the descriptor, so we remove them here first
+            let parsed = Descriptor::<String>::from_str(&descriptor)
+                .map_err(|e| SdkError::InvalidDescriptor { cause: e.to_string() })?;
+            let parsed = parsed.translate_pk(&mut BsmsTranslator)?;
+            println!("{}", parsed);
+
+            (
+                parsed.to_string(),
+                Some(BsmsRound2 {
+                    first_address: bsms.first_address,
+                }),
+            )
+        } else {
+            (descriptor, None)
+        };
+
+        let parsed = Descriptor::<DescriptorPublicKey>::from_str(&descriptor)
+            .map_err(|e| SdkError::InvalidDescriptor { cause: e.to_string() })?;
+        let (variant, script_type) = match parsed {
+            Descriptor::Wpkh(wpkh) => (
+                SetDescriptorVariant::SingleSig(map_key(wpkh.as_inner())?),
+                ScriptType::NativeSegwit,
+            ),
+            Descriptor::Pkh(pkh) => (
+                SetDescriptorVariant::SingleSig(map_key(pkh.as_inner())?),
+                ScriptType::Legacy,
+            ),
+            Descriptor::Sh(sh) => match sh.as_inner() {
+                ShInner::Wpkh(wpkh) => (
+                    SetDescriptorVariant::SingleSig(map_key(wpkh.as_inner())?),
+                    ScriptType::WrappedSegwit,
+                ),
+                ShInner::Wsh(wsh) => (process_wsh(wsh)?, ScriptType::WrappedSegwit),
+                ShInner::Ms(Miniscript {
+                    node: miniscript::Terminal::Multi(k, pks),
+                    ..
+                }) => (make_multisig(*k, pks, false)?, ScriptType::Legacy),
+                ShInner::SortedMulti(SortedMultiVec { k, pks, .. }) => {
+                    (make_multisig(*k, pks, true)?, ScriptType::Legacy)
+                }
+                _ => {
+                    return Err(SdkError::UnsupportedDescriptor {
+                        cause: "Arbitrary descriptors are not supported".to_string(),
+                    })
+                }
+            },
+            Descriptor::Wsh(wsh) => (process_wsh(&wsh)?, ScriptType::NativeSegwit),
+            _ => {
+                return Err(SdkError::UnsupportedDescriptor {
+                    cause: "Unsupported descriptor type".into(),
+                })
+            }
+        };
+
+        let request = Request::SetDescriptor {
+            variant,
+            script_type,
+            bsms,
+        };
+        send_with_retry!(self.requests, request.clone(), Ok(Reply::Ok) => break Ok(()))?;
+
+        Ok(())
     }
 
     pub async fn public_descriptors(&self) -> Result<Descriptors, SdkError> {
@@ -339,6 +511,51 @@ impl PortalSdk {
     #[cfg(feature = "debug")]
     pub async fn debug_msg(&self) -> Result<DebugMessage, SdkError> {
         Ok(self.debug_channel.recv().await?)
+    }
+}
+
+struct BsmsTranslator;
+impl miniscript::Translator<String, String, SdkError> for BsmsTranslator {
+    fn pk(&mut self, pk: &String) -> Result<String, SdkError> {
+        if pk.ends_with("/**") {
+            let mut pk = pk.clone();
+            pk.replace_range(pk.len() - 3.., "/*");
+
+            Ok(pk)
+        } else {
+            Err(SdkError::UnsupportedDescriptor {
+                cause: "When using BSMS all the keys must end with descriptor template syntax (`/**`)"
+                    .into(),
+            })
+        }
+    }
+
+    fn sha256(
+        &mut self,
+        sha256: &<String as miniscript::MiniscriptKey>::Sha256,
+    ) -> Result<<String as miniscript::MiniscriptKey>::Sha256, SdkError> {
+        Ok(sha256.clone())
+    }
+
+    fn hash256(
+        &mut self,
+        hash256: &<String as miniscript::MiniscriptKey>::Hash256,
+    ) -> Result<<String as miniscript::MiniscriptKey>::Hash256, SdkError> {
+        Ok(hash256.clone())
+    }
+
+    fn ripemd160(
+        &mut self,
+        ripemd160: &<String as miniscript::MiniscriptKey>::Ripemd160,
+    ) -> Result<<String as miniscript::MiniscriptKey>::Ripemd160, SdkError> {
+        Ok(ripemd160.clone())
+    }
+
+    fn hash160(
+        &mut self,
+        hash160: &<String as miniscript::MiniscriptKey>::Hash160,
+    ) -> Result<<String as miniscript::MiniscriptKey>::Hash160, SdkError> {
+        Ok(hash160.clone())
     }
 }
 
@@ -486,6 +703,30 @@ pub struct Descriptors {
     pub internal: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "bindings", derive(uniffi::Record))]
+pub struct GetXpubBsmsData {
+    pub version: String,
+    pub token: String,
+    pub key_name: String,
+    pub signature: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "bindings", derive(uniffi::Record))]
+pub struct SetDescriptorBsmsData {
+    pub version: String,
+    pub path_restrictions: String,
+    pub first_address: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "bindings", derive(uniffi::Record))]
+pub struct DeviceXpub {
+    pub xpub: String,
+    pub bsms: GetXpubBsmsData,
+}
+
 #[derive(Debug)]
 #[cfg_attr(feature = "bindings", derive(uniffi::Enum))]
 pub enum GenerateMnemonicWords {
@@ -495,6 +736,7 @@ pub enum GenerateMnemonicWords {
 
 #[derive(Debug)]
 #[cfg_attr(feature = "bindings", derive(uniffi::Error))]
+#[cfg_attr(feature = "bindings", uniffi(flat_error))]
 pub enum SdkError {
     ChannelError,
     CommunicationError,
@@ -505,6 +747,12 @@ pub enum SdkError {
     Base64,
     InvalidFirmware,
     Locked,
+    InvalidDescriptor {
+        cause: String
+    },
+    UnsupportedDescriptor {
+        cause: String
+    },
 }
 
 impl core::fmt::Display for SdkError {
@@ -572,6 +820,7 @@ mod ffi {
 
     uniffi::custom_type!(Network, String);
     uniffi::custom_type!(Address, String);
+    uniffi::custom_type!(DerivationPath, String);
 }
 
 #[cfg(feature = "bindings")]

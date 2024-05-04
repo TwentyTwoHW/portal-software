@@ -55,6 +55,7 @@ async fn test_generate_mnemonic_12words(mut tester: Tester) -> Result<(), crate:
     Ok(())
 }
 
+// mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
 #[functional_test_wrapper::functional_test(flash_file = "./test-vector/initialized.bin")]
 async fn test_load_config(mut tester: Tester) -> Result<(), crate::Error> {
     tester.nfc(NfcAction::GetStatus).await?;
@@ -71,6 +72,7 @@ async fn test_load_config(mut tester: Tester) -> Result<(), crate::Error> {
     Ok(())
 }
 
+// mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
 #[functional_test_wrapper::functional_test(flash_file = "./test-vector/initialized-locked.bin")]
 async fn test_locked(mut tester: Tester) -> Result<(), crate::Error> {
     tester.nfc(NfcAction::GetStatus).await?;

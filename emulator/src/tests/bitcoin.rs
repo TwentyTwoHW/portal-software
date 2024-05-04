@@ -17,6 +17,7 @@
 
 use super::*;
 
+// mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
 #[functional_test_wrapper::functional_test(flash_file = "./test-vector/initialized.bin")]
 async fn test_display_address(mut tester: Tester) -> Result<(), crate::Error> {
     tester.display_assertion("iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAAAx0lEQVR4nO3V0Q6DMAhAUfn/j2bLqoUyWNqH2cTcvTgt0gOtKsfmHwAAAAAAAAAAAAAAAAAA+AZoBdN4Uef9WkZKHqvVwGTaZwC0jb//tl5fSbTfN6R1cUc8ymcwLawG2LErLL4lCoArbsDKWcsKoFduEF+vSWIHkg76QlY6EDvhBlyiApBPfCNAiqWU7MFdBIyJfi6BX/tzf7hkEwD3FLjdYbu6nxf3DbPH9ux4FU/vgT8Ksvn4GgIAAAAAAAAAAAAAAGA74AWxK4JB071edwAAAABJRU5ErkJggg==", None).await?;
@@ -31,13 +32,14 @@ async fn test_display_address(mut tester: Tester) -> Result<(), crate::Error> {
 
     tester
         .nfc_assertion(model::Reply::Address(
-            "tb1qulky7g0u2pgqvqs4azezaz979cpg00w7zwg49e".to_string(),
+            "tb1q3kfjt3cdd9lv9gtu9ssg2uzqvkeuppaqwr9vw5".to_string(),
         ))
         .await?;
 
     Ok(())
 }
 
+// mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
 #[functional_test_wrapper::functional_test(flash_file = "./test-vector/initialized.bin")]
 async fn test_public_descriptors(mut tester: Tester) -> Result<(), crate::Error> {
     tester.display_assertion("iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAAAx0lEQVR4nO3V0Q6DMAhAUfn/j2bLqoUyWNqH2cTcvTgt0gOtKsfmHwAAAAAAAAAAAAAAAAAA+AZoBdN4Uef9WkZKHqvVwGTaZwC0jb//tl5fSbTfN6R1cUc8ymcwLawG2LErLL4lCoArbsDKWcsKoFduEF+vSWIHkg76QlY6EDvhBlyiApBPfCNAiqWU7MFdBIyJfi6BX/tzf7hkEwD3FLjdYbu6nxf3DbPH9ux4FU/vgT8Ksvn4GgIAAAAAAAAAAAAAAGA74AWxK4JB071edwAAAABJRU5ErkJggg==", None).await?;
@@ -51,8 +53,8 @@ async fn test_public_descriptors(mut tester: Tester) -> Result<(), crate::Error>
 
     tester
         .nfc_assertion(model::Reply::Descriptor{
-            external: "wpkh([2bd3bdd7/84'/1'/0']tpubDCPMyXQR36y1uRVgsLGeNgN3awiqucyHGUa7pjQygcRbrbbWCMeRKnShL2hRfvE4zcQ9m9fjMMZHjSoQVatYyuwKqp6AyszbRt6s4iSXChJ/0/*)#klvmrneg".to_string(),
-            internal: Some("wpkh([2bd3bdd7/84'/1'/0']tpubDCPMyXQR36y1uRVgsLGeNgN3awiqucyHGUa7pjQygcRbrbbWCMeRKnShL2hRfvE4zcQ9m9fjMMZHjSoQVatYyuwKqp6AyszbRt6s4iSXChJ/1/*)#8tf67xfs".to_string()),
+            external: "wpkh([73c5da0a/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)#2ag6nxcd".to_string(),
+            internal: Some("wpkh([73c5da0a/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/1/*)#mfdmwng4".to_string()),
         })
         .await?;
 
