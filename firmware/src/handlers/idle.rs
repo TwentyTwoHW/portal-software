@@ -47,6 +47,7 @@ pub async fn handle_idle(
                     .nfc
                     .send(Reply::Info(DeviceInfo::new_unlocked_initialized(
                         wallet.network(),
+                        env!("CARGO_PKG_VERSION")
                     )))
                     .await
                     .unwrap();

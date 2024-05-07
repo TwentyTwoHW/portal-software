@@ -308,7 +308,7 @@ pub async fn handle_init(
             Some(model::Request::GetInfo) => {
                 peripherals
                     .nfc
-                    .send(model::Reply::Info(DeviceInfo::new_locked_uninitialized()))
+                    .send(model::Reply::Info(DeviceInfo::new_locked_uninitialized(env!("CARGO_PKG_VERSION"))))
                     .await
                     .unwrap();
                 peripherals.nfc_finished.recv().await.unwrap();
@@ -374,6 +374,7 @@ pub async fn handle_locked(
                     .nfc
                     .send(model::Reply::Info(DeviceInfo::new_locked_initialized(
                         config.network,
+                        env!("CARGO_PKG_VERSION")
                     )))
                     .await
                     .unwrap();
@@ -565,6 +566,7 @@ pub async fn handle_unverified_config(
                         .send(model::Reply::Info(DeviceInfo::new_unverified_config(
                             config.network,
                             config.pair_code.is_some(),
+                            env!("CARGO_PKG_VERSION")
                         )))
                         .await
                         .unwrap();

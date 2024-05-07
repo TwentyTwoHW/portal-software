@@ -84,10 +84,12 @@
 
         devShells.default = pkgs.mkShell {
           buildInputs = defaultDeps ++ [ rust ];
+          LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
         };
         devShells.embedded = pkgs.mkShell {
           buildInputs = defaultDeps ++ embeddedDeps ++ [ packages.hal ];
 
+          LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
           CC_thumbv7em_none_eabihf = "${pkgs.gcc-arm-embedded}/bin/arm-none-eabi-gcc";
         };
         devShells.android = pkgs.mkShell rec {

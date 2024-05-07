@@ -193,18 +193,21 @@ impl PortalSdk {
                 unverified: None,
                 unlocked,
                 network: Some(network),
+                version: device_info.firmware_version,
             }),
             InitializationStatus::Uninitialized => Ok(CardStatus {
                 initialized: false,
                 unverified: None,
                 unlocked: true,
                 network: None,
+                version: device_info.firmware_version,
             }),
             InitializationStatus::Unverified { with_code, network } => Ok(CardStatus {
                 initialized: false,
                 unverified: Some(with_code),
                 unlocked: true,
                 network: Some(network),
+                version: device_info.firmware_version,
             }),
         }
     }
@@ -694,6 +697,7 @@ pub struct CardStatus {
     pub unverified: Option<bool>,
     pub unlocked: bool,
     pub network: Option<model::bitcoin::Network>,
+    pub version: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

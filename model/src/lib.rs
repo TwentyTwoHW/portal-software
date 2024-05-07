@@ -793,37 +793,41 @@ pub enum InitializationStatus {
 }
 
 impl DeviceInfo {
-    pub fn new_locked_uninitialized() -> Self {
+    pub fn new_locked_uninitialized(version: &'static str) -> Self {
         DeviceInfo {
             initialized: InitializationStatus::Uninitialized,
-            firmware_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            firmware_version: Some(version.to_string()),
         }
     }
 
-    pub fn new_locked_initialized(network: bitcoin::Network) -> Self {
+    pub fn new_locked_initialized(network: bitcoin::Network, version: &'static str) -> Self {
         DeviceInfo {
             initialized: InitializationStatus::Initialized {
                 unlocked: false,
                 network,
             },
-            firmware_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            firmware_version: Some(version.to_string()),
         }
     }
 
-    pub fn new_unverified_config(network: bitcoin::Network, with_code: bool) -> Self {
+    pub fn new_unverified_config(
+        network: bitcoin::Network,
+        with_code: bool,
+        version: &'static str,
+    ) -> Self {
         DeviceInfo {
             initialized: InitializationStatus::Unverified { with_code, network },
-            firmware_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            firmware_version: Some(version.to_string()),
         }
     }
 
-    pub fn new_unlocked_initialized(network: bitcoin::Network) -> Self {
+    pub fn new_unlocked_initialized(network: bitcoin::Network, version: &'static str) -> Self {
         DeviceInfo {
             initialized: InitializationStatus::Initialized {
                 unlocked: true,
                 network,
             },
-            firmware_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            firmware_version: Some(version.to_string()),
         }
     }
 }

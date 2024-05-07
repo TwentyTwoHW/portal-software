@@ -461,10 +461,12 @@ mod app {
 }
 
 #[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    log::error!("PANIC LOCATION: {:?}", info.location());
+
     // NOTE: this adds a ton of extra code, probably to debug-format errors
     #[cfg(feature = "panic-log")]
-    log::error!("PANIC: {:?}", _info);
+    log::error!("PANIC: {:?}", info);
 
     #[cfg(feature = "emulator")]
     {
