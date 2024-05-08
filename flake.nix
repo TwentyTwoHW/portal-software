@@ -24,9 +24,10 @@
         rustVersion = "1.76.0";
         getRust =
           # fullAndroid implies withAndroid
-          { fullAndroid ? false, withAndroid ? fullAndroid, withIos ? false, withEmbedded ? false }:
-
-          (pkgs.rust-bin.stable.${rustVersion}.default.override {
+          { fullAndroid ? false, withAndroid ? fullAndroid, withIos ? false, withEmbedded ? false, nightly ? false }:
+          let
+            rs = if nightly then pkgs.rust-bin.nightly."2024-01-31" else pkgs.rust-bin.stable.${rustVersion};
+          in (rs.default.override {
             extensions = [
               "rust-src" # for rust-analyzer
             ];
@@ -75,7 +76,7 @@
         };
 
         defaultDeps = with pkgs; [ cmake SDL2 fltk pango rust-analyzer pkg-config libusb ];
-        embeddedDeps = with pkgs; [ probe-rs gcc-arm-embedded qemu gdb openocd clang (getRust { withEmbedded = true; }) ];
+        embeddedDeps = with pkgs; [ probe-rs gcc-arm-embedded qemu gdb openocd clang (getRust { withEmbedded = true; nightly = true; }) ];
         androidDeps = with pkgs; [ cargo-ndk jdk gnupg (getRust { fullAndroid = true; }) ];
         iosDeps = with pkgs; [ (getRust { withIos = true; }) ];
       in
@@ -143,8 +144,17 @@
         packages.model = pkgs.callPackage ./model { inherit pkgs; craneLib = getCrane { withEmbedded = false; }; };
         packages.sdk = pkgs.callPackage ./sdk { inherit pkgs; craneLib = getCrane { withEmbedded = false; }; };
 
-        packages.firmware-emu = pkgs.callPackage ./firmware { inherit pkgs; craneLib = getCrane { withEmbedded = true; }; variant = "emulator"; };
-        packages.firmware = pkgs.callPackage ./firmware { inherit pkgs; craneLib = getCrane { withEmbedded = true; }; };
+        packages.firmware-emu = pkgs.callPackage ./firmware rec {
+          inherit pkgs;
+          rustToolchain = getRust { withEmbedded = true; nightly = true; };
+          craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
+          variant = "emulator";
+        };
+        packages.firmware = pkgs.callPackage ./firmware rec {
+          inherit pkgs;
+          rustToolchain = getRust { withEmbedded = true; nightly = true; };
+          craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
+        };
 
         packages.docker.emulatorImage = pkgs.callPackage ./docker/emulator.nix { inherit pkgs packages; };
         packages.docker.devEnvironment = pkgs.callPackage ./docker/embedded-dev.nix { inherit pkgs packages getRust; };

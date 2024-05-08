@@ -81,7 +81,7 @@ jobs:
           ./target
           ./firmware/target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-    - run: nix develop .#embedded --command bash -c "cd firmware && cargo build --no-default-features --features ${{ matrix.target }} --release"
+    - run: nix develop .#embedded --command bash -c "cd firmware && cargo build -Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort --no-default-features --features ${{ matrix.target }} --release"
     - uses: actions/upload-artifact@v2
       with:
         name: firmware-${{ matrix.target }}

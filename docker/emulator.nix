@@ -4,7 +4,7 @@ let
   qemuOnlyArm = packages.smallQemu;
   firmwareOnly = pkgs.runCommand "pruneFirmwareDeps" {} ''
     mkdir -p $out/bin
-    cp ${packages.firmware-emu}/bin/firmware $out/bin/firmware
+    cp ${packages.firmware-emu}/firmware.elf $out/bin/firmware
     ${pkgs.nukeReferences}/bin/nuke-refs $out/bin/firmware
   '';
   hostname = pkgs.writeShellScriptBin "hostname" ''
