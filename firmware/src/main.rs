@@ -151,7 +151,7 @@ mod app {
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
-        #[cfg(feature = "device")]
+        #[cfg(feature = "device-log")]
         rtt_log::init();
         #[cfg(feature = "emulator")]
         unsafe {

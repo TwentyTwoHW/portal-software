@@ -76,7 +76,7 @@
         };
 
         defaultDeps = with pkgs; [ cmake SDL2 fltk pango rust-analyzer pkg-config libusb ];
-        embeddedDeps = with pkgs; [ probe-rs gcc-arm-embedded qemu gdb openocd clang (getRust { withEmbedded = true; nightly = true; }) ];
+        embeddedDeps = with pkgs; [ probe-rs gcc-arm-embedded qemu gdb openocd clang lld (getRust { withEmbedded = true; nightly = true; }) ];
         androidDeps = with pkgs; [ cargo-ndk jdk gnupg (getRust { fullAndroid = true; }) ];
         iosDeps = with pkgs; [ (getRust { withIos = true; }) ];
       in
@@ -90,7 +90,8 @@
           buildInputs = defaultDeps ++ embeddedDeps ++ [ packages.hal ];
 
           LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
-          CC_thumbv7em_none_eabihf = "${pkgs.gcc-arm-embedded}/bin/arm-none-eabi-gcc";
+          CC_thumbv7em_none_eabihf = "clang-17";
+          CFLAGS_thumbv7em_none_eabihf = "-flto -fno-data-sections -fno-function-sections -fno-PIC -fno-stack-protector --target=thumbv7em-none-eabihf -mcpu=cortex-m4 -mthumb -I${pkgs.clang_17}/resource-root/include/ -I${pkgs.gcc-arm-embedded}/arm-none-eabi/include";
         };
         devShells.android = pkgs.mkShell rec {
           buildInputs = defaultDeps ++ androidDeps;
