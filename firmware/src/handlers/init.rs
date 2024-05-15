@@ -37,7 +37,7 @@ use bdk::keys::{
 };
 
 use gui::{
-    GeneratingMnemonicPage, ImportingMnemonicPage, LoadingPage, MnemonicPage, Page, WelcomePage,
+    GeneratingMnemonicPage, LoadingPage, MnemonicPage, Page, WelcomePage,
 };
 use model::{Config, DeviceInfo};
 
@@ -450,7 +450,10 @@ pub async fn display_mnemonic(
         manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
     }
 
-    // TODO: show loading screen here
+    let page = LoadingPage::new();
+    page.init_display(&mut peripherals.display)?;
+    page.draw_to(&mut peripherals.display)?;
+    peripherals.display.flush()?;
 
     let mut salt = [0; 8];
     peripherals.rng.fill_bytes(&mut salt);
@@ -521,7 +524,7 @@ pub async fn handle_import_seed(
     events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
 ) -> Result<CurrentState, Error> {
-    let page = ImportingMnemonicPage::new();
+    let page = LoadingPage::new();
     page.init_display(&mut peripherals.display)?;
     page.draw_to(&mut peripherals.display)?;
     peripherals.display.flush()?;

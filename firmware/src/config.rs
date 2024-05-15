@@ -49,6 +49,11 @@ pub async fn write_config(flash: &mut Flash, config: &Config) -> Result<(), Conf
 
     let mut data = alloc::vec![0x00, 0x00];
     let serialized = minicbor::to_vec(config).expect("always succeed");
+
+    if serialized.len() > PAGE_SIZE - 2 {
+        return Err(ConfigError::CorruptedConfig);
+    }
+
     let len = (serialized.len() as u16).to_be_bytes();
     data.extend(serialized);
     (&mut data[..2]).copy_from_slice(&len);

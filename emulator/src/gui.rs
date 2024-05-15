@@ -21,10 +21,9 @@
 #![allow(clippy::needless_update)]
 
 use std::ops::DerefMut;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex, RwLock};
 
-use embedded_graphics::pixelcolor::Rgb888;
+use embedded_graphics::pixelcolor::Gray8;
 use embedded_graphics_simulator::OutputImage;
 
 use fltk::{
@@ -43,7 +42,8 @@ use model::FwUpdateHeader;
 include!(concat!(env!("OUT_DIR"), "/autogen-gui.rs"));
 
 pub fn init_gui(
-    fb: Rc<RwLock<OutputImage<Rgb888>>>,
+    fb: Arc<RwLock<OutputImage<Gray8>>>,
+    fb_large: Arc<RwLock<OutputImage<Gray8>>>,
     sender: mpsc::UnboundedSender<EmulatorMessage>,
     sdk: Arc<PortalSdk>,
     log: mpsc::UnboundedSender<String>,
@@ -56,28 +56,44 @@ pub fn init_gui(
 
     // TODO: assert fb size is 511x255
     emulator_gui.display.draw(move |i| {
-        let fb = fb.read().unwrap();
+        let fb = fb_large.read().unwrap();
         let data = fb.as_image_buffer().into_raw();
-        let mut image = image::RgbImage::new(&data, i.w(), i.h(), enums::ColorDepth::Rgb8).unwrap();
+        let mut image = image::RgbImage::new(&data, i.w(), i.h(), enums::ColorDepth::L8).unwrap();
         image.draw(i.x(), i.y(), i.w(), i.h());
     });
 
     let sdk_cloned = Arc::clone(&sdk);
+    let fb_cloned = Arc::clone(&fb);
     let sender_cloned = sender.clone();
     let log_cloned = log.clone();
     emulator_gui.display.handle(move |_, ev| match ev {
         enums::Event::Push => {
-            block_on(async {
-                sender_cloned.send(EmulatorMessage::Tsc(true)).unwrap();
-                log_cloned.send("> Tsc(true)".into()).unwrap();
-            });
+            if app::event_button() == 1 {
+                block_on(async {
+                    sender_cloned.send(EmulatorMessage::Tsc(true)).unwrap();
+                    log_cloned.send("> Tsc(true)".into()).unwrap();
+                });
+            }
+
             true
         }
         enums::Event::Released => {
-            block_on(async {
-                sender_cloned.send(EmulatorMessage::Tsc(false)).unwrap();
-                log_cloned.send("> Tsc(false)".into()).unwrap();
-            });
+            if app::event_button() == 1 {
+                block_on(async {
+                    sender_cloned.send(EmulatorMessage::Tsc(false)).unwrap();
+                    log_cloned.send("> Tsc(false)".into()).unwrap();
+                });
+            } else if app::event_button() == 3 {
+                log::warn!(
+                    "{}",
+                    fb_cloned
+                        .read()
+                        .unwrap()
+                        .to_base64_png()
+                        .expect("Can always serialize")
+                );
+            }
+
             true
         }
         _ => false,
@@ -293,10 +309,7 @@ pub fn init_gui(
             log_cloned
                 .send(format!("> SetDescriptor({})", value))
                 .unwrap();
-            match sdk_cloned
-                .set_descriptor(value, None)
-                .await
-            {
+            match sdk_cloned.set_descriptor(value, None).await {
                 Ok(v) => log_cloned.send(format!("< {:?}", v)).unwrap(),
                 Err(e) => log::warn!("Set descriptor err: {:?}", e),
             }

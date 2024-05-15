@@ -31,6 +31,14 @@ use crate::utils::EmulatorInstance;
 
 mod bitcoin;
 mod init;
+mod set_descriptor;
+
+pub const PORTAL_READY: &'static str = "iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAAAx0lEQVR4nO3V0Q6DMAhAUfn/j2bLqoUyWNqH2cTcvTgt0gOtKsfmHwAAAAAAAAAAAAAAAAAA+AZoBdN4Uef9WkZKHqvVwGTaZwC0jb//tl5fSbTfN6R1cUc8ymcwLawG2LErLL4lCoArbsDKWcsKoFduEF+vSWIHkg76QlY6EDvhBlyiApBPfCNAiqWU7MFdBIyJfi6BX/tzf7hkEwD3FLjdYbu6nxf3DbPH9ux4FU/vgT8Ksvn4GgIAAAAAAAAAAAAAAGA74AWxK4JB071edwAAAABJRU5ErkJggg==";
+pub const LOADING: &'static str = "iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAAAj0lEQVR4nO3VsQ6AIAxFUfr/H/1UsAJhYbDAcBlsKpCeaEVLmwcAAAAAAAAAAAAAAAAAAJgDyNfJ9ygHpSa/o8pNq+t+BgwF5FXr1HOpSRBAbfEOUPIzABE9MAHIkwsA7+axB9yw6wnk/jSPWwEBTSibAQR9Bd877w6cZQcR/wIAAAAAAAAAAAAAAAAACBwX0C1tQf0U+LsAAAAASUVORK5CYII=";
+pub const LOCKED: &'static str = "iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAAAfklEQVR4nO3VsQ7AIAhFUfj/j34dgFg3TVMZvC5oongSFd2aGwAAAAAAAAAAAAAAAAAAWAeo5irXZVT0XZlQe3n3Aa8NPWKNfUzUcuIvgBGnPY8CbLJ0ASJLXY1GwJVHcP4SyhufoVXl6SlE/AUAAAAAAAAAAAAAAAAA8FN7APK2WUEuePxjAAAAAElFTkSuQmCC";
+
+pub const WPKH_EXTERNAL_DESC: &'static str = "wpkh([73c5da0a/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)#2ag6nxcd";
+pub const WPKH_INTERNAL_DESC: &'static str = "wpkh([73c5da0a/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/1/*)#mfdmwng4";
 
 static INIT_LOG: Once = Once::new();
 
@@ -108,11 +116,34 @@ async fn run_script(
                                 .await;
                         })
                     }
+                    NfcAction::RestoreMnemonic(words, network, pair_code) => {
+                        tokio::spawn(async move {
+                            let _ = cloned_sdk.restore_mnemonic(words, network, pair_code).await;
+                        })
+                    }
                     NfcAction::SignPsbt(psbt) => tokio::spawn(async move {
-                        let _ = cloned_sdk.sign_psbt(psbt).await;
+                        let signed_psbt = cloned_sdk.sign_psbt(psbt).await;
+                        log::debug!("Full psbt: {:?}", signed_psbt);
                     }),
                     NfcAction::RequestDescriptors => tokio::spawn(async move {
                         let _ = cloned_sdk.public_descriptors().await;
+                    }),
+                    NfcAction::GetXpub(path) => tokio::spawn(async move {
+                        let _ = cloned_sdk
+                            .get_xpub(path.parse().expect("Valid derivation path"))
+                            .await;
+                    }),
+                    NfcAction::SetDescriptor(desc, bsms) => tokio::spawn(async move {
+                        let bsms = bsms.map(|data| portal::SetDescriptorBsmsData {
+                            first_address: data.first_address,
+                            version: "1.0".into(),
+                            path_restrictions: "/0/*,/1/*".into(),
+                        });
+                        let _ = cloned_sdk.set_descriptor(desc, bsms).await;
+                    }),
+
+                    NfcAction::Raw(data) => tokio::spawn(async move {
+                        let _ = cloned_sdk.debug_send_raw(data).await;
                     }),
                 };
                 None
@@ -121,11 +152,16 @@ async fn run_script(
                 crate::link::wipe_flash(&mut emulator.flash, &mut emulator.card).await?;
                 None
             }
+            TestOp::Action(TestAction::Reset) => {
+                emulator.card.send(EmulatorMessage::Reset)?;
+                None
+            }
 
             TestOp::Assertion(TestAssertion::Display {
                 content,
                 timeout_ticks,
             }) => {
+                let start = std::time::Instant::now();
                 let mut tick_counter = 0;
                 let timeout = timeout_ticks.unwrap_or(16);
 
@@ -147,7 +183,7 @@ async fn run_script(
                         tick_counter += 1;
                     }
 
-                    if tick_counter > timeout {
+                    if tick_counter > timeout || start.elapsed().as_secs() > 5 {
                         break Some(AssertionResult::WrongDisplay(
                             emulator
                                 .display
@@ -157,20 +193,46 @@ async fn run_script(
                     }
                 }
             }
-            TestOp::Assertion(TestAssertion::NfcResponse(expected)) => {
-                loop {
+            TestOp::Assertion(TestAssertion::NfcResponse(expected, send_ping)) => {
+                'outer: loop {
                     use ::model::Reply;
 
+                    let start = std::time::Instant::now();
+                    let timeout = || Some(AssertionResult::WrongReply("<timeout>".into()));
                     let resp = loop {
-                        // TODO: timeout
-                        match sdk.debug_msg().await? {
-                            portal::DebugMessage::Out(_) => continue,
-                            portal::DebugMessage::In(r)
+                        match tokio::time::timeout(
+                            std::time::Duration::from_secs(5),
+                            sdk.debug_msg(),
+                        )
+                        .await
+                        {
+                            Ok(Ok(portal::DebugMessage::Out(_)))
+                            | Ok(Ok(portal::DebugMessage::RawOut(_))) => continue,
+                            Ok(Ok(portal::DebugMessage::In(r)))
                                 if matches!(r, Reply::Pong | Reply::DelayedReply) =>
                             {
-                                continue
+                                if *send_ping {
+                                    let ping =
+                                        model::minicbor::to_vec(&model::Request::Ping).unwrap();
+                                    sdk.debug_send_raw(ping).await?;
+                                }
+
+                                if start.elapsed().as_secs() > 5 {
+                                    break 'outer timeout();
+                                } else {
+                                    continue;
+                                }
                             }
-                            portal::DebugMessage::In(r) => break r,
+                            Ok(Ok(portal::DebugMessage::In(r))) => break r,
+
+                            // Timeout
+                            Err(_) => {
+                                break 'outer timeout();
+                            }
+                            Ok(Err(e)) => {
+                                log::warn!("Error {:?}", e);
+                                return Err(e.into());
+                            }
                         };
                     };
 
@@ -249,13 +311,21 @@ impl Tester {
         Ok(())
     }
 
-    pub async fn nfc_assertion(&mut self, assertion: model::Reply) -> Result<(), crate::Error> {
+    pub async fn nfc_assertion_raw(
+        &mut self,
+        assertion: model::Reply,
+        send_ping: bool,
+    ) -> Result<(), crate::Error> {
         self.op_sender
-            .send(TestAssertion::NfcResponse(assertion).into())
+            .send(TestAssertion::NfcResponse(assertion, send_ping).into())
             .await?;
         self.expect_reply().await?;
 
         Ok(())
+    }
+
+    pub async fn nfc_assertion(&mut self, assertion: model::Reply) -> Result<(), crate::Error> {
+        self.nfc_assertion_raw(assertion, false).await
     }
 
     pub async fn display_assertion(
@@ -279,6 +349,13 @@ impl Tester {
 
     pub async fn tsc(&mut self, value: bool) -> Result<(), crate::Error> {
         self.op_sender.send(TestAction::Input(value).into()).await?;
+        self.expect_reply().await?;
+
+        Ok(())
+    }
+
+    pub async fn reset(&mut self) -> Result<(), crate::Error> {
+        self.op_sender.send(TestAction::Reset.into()).await?;
         self.expect_reply().await?;
 
         Ok(())

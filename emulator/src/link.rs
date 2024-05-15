@@ -204,6 +204,17 @@ where
         }
     }
 
+    if let Some(_) = try_pull_msg(&mut emulator.msgs.finish_boot)? {
+        log::debug!("Re-sending entropy");
+
+        // Re-send entropy when the card resets
+        emulator
+            .card
+            .send(EmulatorMessage::Entropy(emulator.entropy.clone()))
+            .unwrap();
+        emulator.sdk.new_tag().await?;
+    }
+
     // Sleep for a little bit: in case of a single-threaded context this will let
     // the runtime move forward the other tasks a bit. Otherwise we might end up
     // in a deadlock while waiting for somewhing to happen

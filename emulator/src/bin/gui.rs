@@ -156,18 +156,25 @@ async fn main() -> Result<(), emulator::Error> {
     )
     .await?;
 
-    let output_settings = OutputSettingsBuilder::new()
+    let output_settings = OutputSettingsBuilder::new().scale(1).build();
+
+    let output_settings_large = OutputSettingsBuilder::new()
         .theme(BinaryColorTheme::OledWhite)
         .build();
 
-    let output_image = emulator.display.to_rgb_output_image(&output_settings);
-    let fb = std::rc::Rc::new(std::sync::RwLock::new(output_image));
+    let output_image = emulator.display.to_grayscale_output_image(&output_settings);
+    let output_image_large = emulator
+        .display
+        .to_grayscale_output_image(&output_settings_large);
+    let fb = Arc::new(std::sync::RwLock::new(output_image));
+    let fb_large = Arc::new(std::sync::RwLock::new(output_image_large));
 
     let sdk = Arc::clone(&emulator.sdk);
     let cloned_sdk = Arc::clone(&sdk);
     tokio::spawn(async move {
         while let Ok(msg) = cloned_sdk.debug_msg().await {
             match msg {
+                portal::DebugMessage::RawOut(data) => log::debug!("> Raw({:02X?})", data),
                 portal::DebugMessage::Out(req) => log::debug!("> {:?}", req),
                 portal::DebugMessage::In(reply) => log::debug!("< {:?}", reply),
             }
@@ -176,8 +183,13 @@ async fn main() -> Result<(), emulator::Error> {
 
     let (log_s, mut log_r) = mpsc::unbounded_channel::<String>();
     let app = fltk::app::App::default().with_scheme(app::Scheme::Gtk);
-    let mut emulator_gui =
-        emulator::gui::init_gui(fb.clone(), emulator.card.clone(), sdk.clone(), log_s);
+    let mut emulator_gui = emulator::gui::init_gui(
+        fb.clone(),
+        fb_large.clone(),
+        emulator.card.clone(),
+        sdk.clone(),
+        log_s,
+    );
 
     app::add_idle3(move |_| {
         emulator_gui.window.redraw();
@@ -220,6 +232,8 @@ async fn main() -> Result<(), emulator::Error> {
 
         let mut fb = fb.write().unwrap();
         fb.update(&emulator.display);
+        let mut fb_large = fb_large.write().unwrap();
+        fb_large.update(&emulator.display);
     }
 
     Ok(())

@@ -55,8 +55,7 @@ const FLASH_SIZE: u32 = 510 * 2048;
 const FLASH_END: u32 = FLASH_BASE + FLASH_SIZE;
 
 #[cfg(feature = "bindings")]
-pub use model::bitcoin::{Address, Network, util::bip32::DerivationPath};
-
+pub use model::bitcoin::{util::bip32::DerivationPath, Address, Network};
 
 #[cfg_attr(feature = "bindings", derive(uniffi::Object))]
 pub struct PortalSdk {
@@ -66,12 +65,13 @@ pub struct PortalSdk {
     stop: channel::Sender<()>,
 
     #[cfg(feature = "debug")]
-    debug_channel: channel::Receiver<DebugMessage>,
+    debug_channels: Debug,
 }
 
 #[cfg(feature = "debug")]
 #[cfg_attr(feature = "bindings", derive(uniffi::Object))]
 pub enum DebugMessage {
+    RawOut(Vec<u8>),
     Out(Request),
     In(Reply),
 }
@@ -107,6 +107,12 @@ macro_rules! send_with_retry {
                     async_std::task::sleep(Duration::from_millis(50)).await;
                     continue;
                 },
+                Ok(Reply::Error(cause)) => {
+                    break Err(SdkError::DeviceError { cause })
+                }
+                Ok(Reply::Unverified) => {
+                    break Err(SdkError::DeviceError { cause: "Unverified mnemonic".into() })
+                }
                 Ok(Reply::Locked) => {
                     break Err(SdkError::Locked)
                 }
@@ -135,7 +141,7 @@ use dummy_uniffi as uniffi;
 impl PortalSdk {
     #[uniffi::constructor]
     pub fn new(use_fast_ops: bool) -> Arc<Self> {
-        let (manager, requests, nfc, stop, _debug_channel) = InnerManager::new(use_fast_ops);
+        let (manager, requests, nfc, stop, _debug_channels) = InnerManager::new(use_fast_ops);
 
         #[cfg(feature = "android")]
         android_logger::init_once(
@@ -151,7 +157,7 @@ impl PortalSdk {
             stop,
 
             #[cfg(feature = "debug")]
-            debug_channel: _debug_channel,
+            debug_channels: _debug_channels,
         })
     }
 
@@ -268,7 +274,6 @@ impl PortalSdk {
 
         let mut psbt: model::bitcoin::util::psbt::Psbt =
             deserialize(psbt.deref()).map_err(|_| SdkError::CommunicationError)?;
-        dbg!(base64::encode(&serialize(&psbt)));
         psbt.unsigned_tx = original_psbt.unsigned_tx.clone();
 
         original_psbt
@@ -379,8 +384,11 @@ impl PortalSdk {
             }
 
             // If we have BSMS data we expect path restrictions in the descriptor, so we remove them here first
-            let parsed = Descriptor::<String>::from_str(&descriptor)
-                .map_err(|e| SdkError::InvalidDescriptor { cause: e.to_string() })?;
+            let parsed = Descriptor::<String>::from_str(&descriptor).map_err(|e| {
+                SdkError::InvalidDescriptor {
+                    cause: e.to_string(),
+                }
+            })?;
             let parsed = parsed.translate_pk(&mut BsmsTranslator)?;
             println!("{}", parsed);
 
@@ -394,8 +402,11 @@ impl PortalSdk {
             (descriptor, None)
         };
 
-        let parsed = Descriptor::<DescriptorPublicKey>::from_str(&descriptor)
-            .map_err(|e| SdkError::InvalidDescriptor { cause: e.to_string() })?;
+        let parsed = Descriptor::<DescriptorPublicKey>::from_str(&descriptor).map_err(|e| {
+            SdkError::InvalidDescriptor {
+                cause: e.to_string(),
+            }
+        })?;
         let (variant, script_type) = match parsed {
             Descriptor::Wpkh(wpkh) => (
                 SetDescriptorVariant::SingleSig(map_key(wpkh.as_inner())?),
@@ -513,7 +524,12 @@ impl PortalSdk {
 
     #[cfg(feature = "debug")]
     pub async fn debug_msg(&self) -> Result<DebugMessage, SdkError> {
-        Ok(self.debug_channel.recv().await?)
+        Ok(self.debug_channels.recv.recv().await?)
+    }
+    #[cfg(feature = "debug")]
+    pub async fn debug_send_raw(&self, data: Vec<u8>) -> Result<(), SdkError> {
+        self.debug_channels.send.send(data).await?;
+        Ok(())
     }
 }
 
@@ -527,8 +543,9 @@ impl miniscript::Translator<String, String, SdkError> for BsmsTranslator {
             Ok(pk)
         } else {
             Err(SdkError::UnsupportedDescriptor {
-                cause: "When using BSMS all the keys must end with descriptor template syntax (`/**`)"
-                    .into(),
+                cause:
+                    "When using BSMS all the keys must end with descriptor template syntax (`/**`)"
+                        .into(),
             })
         }
     }
@@ -602,13 +619,18 @@ struct InnerManager {
     stop: channel::Receiver<()>,
 
     #[cfg(feature = "debug")]
-    debug: channel::Sender<DebugMessage>,
+    debug_out: channel::Sender<DebugMessage>,
+    #[cfg(feature = "debug")]
+    debug_in: channel::Receiver<Vec<u8>>,
 }
 
 #[cfg(not(feature = "debug"))]
 type Debug = ();
 #[cfg(feature = "debug")]
-type Debug = channel::Receiver<DebugMessage>;
+struct Debug {
+    recv: channel::Receiver<DebugMessage>,
+    send: channel::Sender<Vec<u8>>,
+}
 
 impl InnerManager {
     fn new(
@@ -627,7 +649,19 @@ impl InnerManager {
         let (stop_s, stop_r) = channel::unbounded();
 
         #[cfg(feature = "debug")]
-        let (debug_s, debug) = channel::unbounded();
+        let (debug_out, debug_in, debug) = {
+            let (debug_msg_s, debug_msg_r) = channel::unbounded();
+            let (debug_raw_s, debug_raw_r) = channel::unbounded();
+
+            (
+                debug_msg_s,
+                debug_raw_r,
+                Debug {
+                    recv: debug_msg_r,
+                    send: debug_raw_s,
+                },
+            )
+        };
         #[cfg(not(feature = "debug"))]
         let debug = ();
 
@@ -644,7 +678,9 @@ impl InnerManager {
             stop: stop_r,
 
             #[cfg(feature = "debug")]
-            debug: debug_s,
+            debug_out,
+            #[cfg(feature = "debug")]
+            debug_in,
         };
 
         let req_channels = RequestChannels {
@@ -677,7 +713,9 @@ impl InnerManager {
                     self.use_fast_ops,
 
                     #[cfg(feature = "debug")]
-                    &self.debug,
+                    &self.debug_out,
+                    #[cfg(feature = "debug")]
+                    &self.debug_in,
                 ).fuse() => {
                     log::debug!("inner_future exited with: {:?}", result);
 
@@ -751,12 +789,9 @@ pub enum SdkError {
     Base64,
     InvalidFirmware,
     Locked,
-    InvalidDescriptor {
-        cause: String
-    },
-    UnsupportedDescriptor {
-        cause: String
-    },
+    DeviceError { cause: String },
+    InvalidDescriptor { cause: String },
+    UnsupportedDescriptor { cause: String },
 }
 
 impl core::fmt::Display for SdkError {

@@ -228,6 +228,7 @@ pub async fn get_emulator_instance(
             msgs,
             flash,
             sdk,
+            entropy,
 
             _qemu_handle: None,
         })
@@ -281,6 +282,7 @@ pub struct EmulatorInstance {
     pub display: SimulatorDisplay<BinaryColor>,
     pub flash: Box<dyn ReadWrite + Send>,
     pub sdk: Arc<PortalSdk>,
+    pub entropy: [u8; 32],
 
     pub(super) _qemu_handle: Option<Child>,
 }
@@ -316,6 +318,7 @@ impl EmulatorInstance {
             display,
             flash,
             sdk,
+            entropy,
             _qemu_handle: Some(_qemu_handle),
         })
     }

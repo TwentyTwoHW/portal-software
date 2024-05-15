@@ -222,14 +222,6 @@ impl GeneratingMnemonicPage {
     }
 }
 
-pub struct ImportingMnemonicPage(SingleLineTextPage<'static>);
-impl_wrapper_page!(ImportingMnemonicPage, SingleLineTextPage<'static>);
-impl ImportingMnemonicPage {
-    pub fn new() -> Self {
-        ImportingMnemonicPage(SingleLineTextPage::new("Restoring mnemonic..."))
-    }
-}
-
 pub struct LoadingPage(SingleLineTextPage<'static>);
 impl_wrapper_page!(LoadingPage, SingleLineTextPage<'static>);
 impl LoadingPage {
@@ -452,8 +444,12 @@ impl_wrapper_page!(
 );
 impl<'s> SummaryPage<'s> {
     pub fn new(summary: &'s str, idle_text: &'static str) -> Self {
+        Self::new_with_threshold(summary, idle_text, 100)
+    }
+
+    pub fn new_with_threshold(summary: &'s str, idle_text: &'static str, threshold: u32) -> Self {
         SummaryPage(ConfirmBarPage::new_default_bar(
-            100,
+            threshold,
             SummaryPageContent(summary),
             idle_text,
             "KEEP HOLDING...",
@@ -529,7 +525,7 @@ impl<'s> MainContent for TxOutputPageContent<'s> {
         );
         address_summary.draw(target)?;
 
-        let value = alloc::format!("{} BTC", self.value.to_string_in(Denomination::Bitcoin));
+        let value = alloc::format!("{:.8} BTC", self.value.display_in(Denomination::Bitcoin));
         let scroll = ScrollText::<1, 5, 15>::new(&value);
         let value_text = Text::with_text_style(
             &scroll.compute(self.iteration),
@@ -652,21 +648,23 @@ impl<'s> GenericTwoLinePage<'s> {
     }
 }
 
-pub struct ConfirmSetDescriptorAddressContent<'s> {
+pub struct ShowScrollingAddressContent<'s> {
     address: &'s str,
+    message: &'s str,
     iteration: usize,
 }
 
-impl<'s> ConfirmSetDescriptorAddressContent<'s> {
-    fn new(address: &'s str) -> Self {
-        ConfirmSetDescriptorAddressContent {
+impl<'s> ShowScrollingAddressContent<'s> {
+    fn new(address: &'s str, message: &'s str) -> Self {
+        ShowScrollingAddressContent {
             address,
+            message,
             iteration: 0,
         }
     }
 }
 
-impl<'s> MainContent for ConfirmSetDescriptorAddressContent<'s> {
+impl<'s> MainContent for ShowScrollingAddressContent<'s> {
     fn draw_to<T>(&self, target: &mut T) -> Result<(), <T as DrawTarget>::Error>
     where
         T: DrawTarget<Color = BinaryColor>,
@@ -677,7 +675,7 @@ impl<'s> MainContent for ConfirmSetDescriptorAddressContent<'s> {
         rectangle.draw(target)?;
 
         let value_text = Text::with_text_style(
-            "Confirm first address",
+            &self.message,
             Point::new(64, 10),
             MonoTextStyle::new(&ascii::FONT_6X10, On),
             TextStyleBuilder::new()
@@ -709,19 +707,17 @@ impl<'s> MainContent for ConfirmSetDescriptorAddressContent<'s> {
     }
 }
 
-pub struct ConfirmSetDescriptorAddressPage<'s>(
-    ConfirmBarPage<'s, ConfirmSetDescriptorAddressContent<'s>>,
-);
+pub struct ShowScrollingAddressPage<'s>(ConfirmBarPage<'s, ShowScrollingAddressContent<'s>>);
 impl_wrapper_page!(
-    ConfirmSetDescriptorAddressPage<'s>,
-    ConfirmBarPage<'s, ConfirmSetDescriptorAddressContent<'s>>
+    ShowScrollingAddressPage<'s>,
+    ConfirmBarPage<'s, ShowScrollingAddressContent<'s>>
 );
-impl<'s> ConfirmSetDescriptorAddressPage<'s> {
-    pub fn new(address: &'s str) -> Self {
-        ConfirmSetDescriptorAddressPage(ConfirmBarPage::new_default_bar(
+impl<'s> ShowScrollingAddressPage<'s> {
+    pub fn new(address: &'s str, message: &'s str, bar_message: &'static str) -> Self {
+        ShowScrollingAddressPage(ConfirmBarPage::new_default_bar(
             100,
-            ConfirmSetDescriptorAddressContent::new(address),
-            "HOLD BTN FOR NEXT PAGE",
+            ShowScrollingAddressContent::new(address, message),
+            bar_message,
             "KEEP HOLDING...",
         ))
     }
@@ -735,7 +731,7 @@ impl MainContent for TxSummaryPageContent {
     where
         T: DrawTarget<Color = BinaryColor>,
     {
-        let fees_str = alloc::format!("{} BTC", self.fees.to_string_in(Denomination::Bitcoin));
+        let fees_str = alloc::format!("{:.8} BTC", self.fees.display_in(Denomination::Bitcoin));
         let content = TwoLinesText::new("Transaction Fee", &fees_str);
         content.draw_to(target)
     }

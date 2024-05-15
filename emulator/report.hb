@@ -28,6 +28,9 @@
         display:active {
             opacity: 0.5;
         }
+        pre {
+            white-space: pre-wrap;
+        }
     </style>
 </head>
 <body>

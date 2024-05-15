@@ -559,7 +559,7 @@ pub async fn handle_begin_fw_update(
         }
     }
 
-    let page = SingleLineTextPage::new("UPD COMPLETE");
+    let page = SingleLineTextPage::new("UPDATE COMPLETE");
     page.init_display(&mut peripherals.display)?;
     page.draw_to(&mut peripherals.display)?;
     peripherals.display.flush()?;

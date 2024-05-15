@@ -76,10 +76,15 @@ pub enum NfcAction {
         model::bitcoin::Network,
         Option<String>,
     ),
+    RestoreMnemonic(String, model::bitcoin::Network, Option<String>),
     RequestDescriptors,
     DisplayAddress(u32),
     Unlock(String),
     Resume,
+    GetXpub(String),
+    SetDescriptor(String, Option<model::BsmsRound2>),
+
+    Raw(Vec<u8>),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -88,11 +93,12 @@ pub enum TestAction {
     Input(bool),
     WaitTicks(usize),
     WipeFlash,
+    Reset,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum TestAssertion {
-    NfcResponse(model::Reply),
+    NfcResponse(model::Reply, bool),
     Display {
         content: String,
         timeout_ticks: Option<usize>,

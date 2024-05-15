@@ -19,6 +19,7 @@ use std::ops::DerefMut;
 use std::time::Duration;
 
 use async_std::channel;
+use futures::FutureExt;
 
 use model::encryption::CipherState;
 use rand::RngCore;
@@ -93,7 +94,8 @@ pub(crate) async fn inner_future(
     nfc: &mut super::IndexedChannelPair,
     use_fast_ops: bool,
 
-    #[cfg(feature = "debug")] debug: &channel::Sender<super::DebugMessage>,
+    #[cfg(feature = "debug")] debug_out: &channel::Sender<super::DebugMessage>,
+    #[cfg(feature = "debug")] debug_in: &channel::Receiver<Vec<u8>>,
 ) -> Result<(), FutureError> {
     async fn send_message(
         nfc: &mut super::IndexedChannelPair,
@@ -154,31 +156,22 @@ pub(crate) async fn inner_future(
         }
     }
 
-    async fn process_request(
+    async fn process_raw_message(
         nfc: &mut super::IndexedChannelPair,
-        encrypt: &mut CipherState,
         decrypt: &mut CipherState,
-        requests: &channel::Receiver<Request>,
+        message: Message,
         replies: &channel::Sender<Result<Reply, FutureError>>,
         use_fast_ops: bool,
 
         #[cfg(feature = "debug")] debug: &channel::Sender<super::DebugMessage>,
     ) -> Result<(), FutureError> {
-        let request = requests.recv().await?;
-
         // Since we've popped the request from the channel at this point, if we fail
         // we need to send a reply
         let on_drop = OnDrop::new(|| {
             let _ = replies.send_blocking(Err(FutureError::Canceled));
         });
 
-        #[cfg(feature = "debug")]
-        debug
-            .send(super::DebugMessage::Out(request.clone()))
-            .await?;
-
-        let msg = Message::new_serialize(&request, encrypt)?;
-        send_message(nfc, use_fast_ops, msg).await?;
+        send_message(nfc, use_fast_ops, message).await?;
 
         wait_next(nfc, Some(TransferDir::HostToNfc)).await?;
 
@@ -192,6 +185,57 @@ pub(crate) async fn inner_future(
         replies.send(Ok(reply)).await?;
 
         on_drop.defuse();
+
+        Ok(())
+    }
+
+    async fn process_request(
+        nfc: &mut super::IndexedChannelPair,
+        encrypt: &mut CipherState,
+        decrypt: &mut CipherState,
+        request: Request,
+        replies: &channel::Sender<Result<Reply, FutureError>>,
+        use_fast_ops: bool,
+
+        #[cfg(feature = "debug")] debug: &channel::Sender<super::DebugMessage>,
+    ) -> Result<(), FutureError> {
+        #[cfg(feature = "debug")]
+        debug
+            .send(super::DebugMessage::Out(request.clone()))
+            .await?;
+
+        let msg = Message::new_serialize(&request, encrypt)?;
+        process_raw_message(
+            nfc,
+            decrypt,
+            msg,
+            replies,
+            use_fast_ops,
+            #[cfg(feature = "debug")]
+            debug,
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    #[cfg(feature = "debug")]
+    async fn process_send_debug_msg(
+        nfc: &mut super::IndexedChannelPair,
+        encrypt: &mut CipherState,
+        decrypt: &mut CipherState,
+        raw_message: Vec<u8>,
+        replies: &channel::Sender<Result<Reply, FutureError>>,
+        use_fast_ops: bool,
+
+        debug: &channel::Sender<super::DebugMessage>,
+    ) -> Result<(), FutureError> {
+        debug
+            .send(super::DebugMessage::RawOut(raw_message.clone()))
+            .await?;
+
+        let msg = Message::from_slice_encrypt(&raw_message, encrypt)?;
+        process_raw_message(nfc, decrypt, msg, replies, use_fast_ops, debug).await?;
 
         Ok(())
     }
@@ -225,19 +269,29 @@ pub(crate) async fn inner_future(
 
     let (mut encrypt, mut decrypt) = handshake_state.get_ciphers();
 
+    #[cfg(not(feature = "debug"))]
+    let (_sender, debug_in) = channel::unbounded::<Vec<u8>>();
+
     loop {
-        if let Err(e) = process_request(
-            nfc,
-            &mut encrypt,
-            &mut decrypt,
-            requests,
-            replies,
-            use_fast_ops,
-            #[cfg(feature = "debug")]
-            debug,
-        )
-        .await
-        {
+        let result = futures::select_biased! {
+            r = requests.recv().fuse() => {
+                match r {
+                    Ok(r) => process_request(nfc, &mut encrypt, &mut decrypt, r, replies, use_fast_ops, #[cfg(feature = "debug")] debug_out).await,
+                    Err(e) => Err(e.into()),
+                }
+            },
+            _data = debug_in.recv().fuse() => {
+                #[cfg(feature = "debug")]
+                match _data {
+                    Ok(data) => process_send_debug_msg(nfc, &mut encrypt, &mut decrypt, data, replies, use_fast_ops, #[cfg(feature = "debug")] debug_out).await,
+                    Err(e) => Err(e.into()),
+                }
+                #[cfg(not(feature = "debug"))]
+                unimplemented!()
+            },
+        };
+
+        if let Err(e) = result {
             replies.send(Err(e.clone())).await?;
             break Err(e);
         }

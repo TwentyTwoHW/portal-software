@@ -25,6 +25,7 @@ use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
+pub use minicbor;
 pub use minicbor::bytes::{ByteArray, ByteVec};
 use minicbor::{Decode, Encode};
 
@@ -167,17 +168,24 @@ impl Message {
         }
     }
 
+    pub fn from_slice_encrypt<C: Cipher>(
+        data: &[u8],
+        cipher: &mut CipherState<C>,
+    ) -> Result<Self, MessageError> {
+        let buf = cipher.encrypt_vec(&data);
+        Ok(Message {
+            buf,
+            finished: true,
+        })
+    }
+
     pub fn new_serialize<S, C>(obj: &S, cipher: &mut CipherState<C>) -> Result<Self, MessageError>
     where
         S: Encode<()>,
         C: Cipher,
     {
         let buf = minicbor::to_vec(&obj).expect("always succeed");
-        let buf = cipher.encrypt_vec(&buf);
-        Ok(Message {
-            buf,
-            finished: true,
-        })
+        Self::from_slice_encrypt(&buf, cipher)
     }
 
     pub fn is_finished(&self) -> bool {
@@ -223,7 +231,12 @@ impl Message {
     }
 
     fn iter_chunks<'s>(&'s self, chunk_size: usize) -> impl Iterator<Item = (&'s [u8], bool)> + 's {
-        let last_chunk = self.buf.len() / chunk_size;
+        let last_chunk = self.buf.len() / chunk_size
+            - if self.buf.len() % chunk_size == 0 {
+                1
+            } else {
+                0
+            };
         self.buf
             .chunks(chunk_size)
             .enumerate()
@@ -397,6 +410,13 @@ impl From<bip32::Fingerprint> for SerializedFingerprint {
     fn from(value: bip32::Fingerprint) -> Self {
         SerializedFingerprint {
             value: value.into_bytes(),
+        }
+    }
+}
+impl From<u32> for SerializedFingerprint {
+    fn from(value: u32) -> Self {
+        SerializedFingerprint {
+            value: value.to_be_bytes(),
         }
     }
 }

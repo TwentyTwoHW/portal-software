@@ -104,7 +104,7 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-fw-test
     - run: nix develop .#embedded --command bash -c "cd firmware && cargo build --no-default-features --features emulator,emulator-fast-ticks --profile=emulator-fast-ticks --verbose"
     - run: nix develop .#embedded --command bash -c "cargo build --package emulator --no-default-features"
-    - run: nix develop .#embedded --command bash -c "REPORT_TMP_DIR=/tmp/portal-test-report RUST_LOG=emulator=trace cargo emu-test -- --nocapture --test-threads 1"
+    - run: nix develop .#embedded --command bash -c "REPORT_TMP_DIR=/tmp/portal-test-report RUST_LOG=emulator=debug cargo emu-test -- --nocapture --test-threads 1"
       timeout-minutes: 10
     - uses: actions/upload-artifact@v2
       if: always()

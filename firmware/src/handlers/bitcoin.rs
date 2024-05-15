@@ -33,7 +33,7 @@ use bdk::miniscript::{DescriptorPublicKey, ForEachKey};
 use bdk::HdKeyPaths;
 
 use gui::{
-    ConfirmSetDescriptorAddressPage, GenericTwoLinePage, LoadingPage, Page, SigningTxPage,
+    ShowScrollingAddressPage, GenericTwoLinePage, LoadingPage, Page, SigningTxPage,
     SummaryPage, TxOutputPage, TxSummaryPage,
 };
 use model::{
@@ -274,20 +274,27 @@ pub async fn handle_display_address_request(
     peripherals.tsc_enabled.enable();
 
     let s = alloc::format!("Display\nAddress #{}?", index);
-    let mut page = SummaryPage::new(&s, "HOLD BTN TO DISPLAY ADDR");
+    let mut page = SummaryPage::new_with_threshold(&s, "HOLD BTN TO CONTINUE", 50);
     page.init_display(&mut peripherals.display)?;
     page.draw_to(&mut peripherals.display)?;
     peripherals.display.flush()?;
-
     manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
 
     let addr = Rc::get_mut(wallet)
         .unwrap()
         .get_address(bdk::wallet::AddressIndex::Peek(index));
+    let addr = addr.to_string();
+
+    let message = alloc::format!("Address #{}", index);
+    let mut page = ShowScrollingAddressPage::new(&addr, &message, "HOLD BTN TO EXIT");
+    page.init_display(&mut peripherals.display)?;
+    page.draw_to(&mut peripherals.display)?;
+    peripherals.display.flush()?;
+    manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
 
     peripherals
         .nfc
-        .send(model::Reply::Address(addr.to_string()))
+        .send(model::Reply::Address(addr))
         .await
         .unwrap();
 
@@ -311,7 +318,7 @@ pub async fn handle_public_descriptor_request(
 
     peripherals.tsc_enabled.enable();
 
-    let mut page = SummaryPage::new("Export\nDescriptor?", "HOLD BTN TO EXPORT DESC");
+    let mut page = SummaryPage::new("Allow watch\nonly access?", "HOLD BTN TO EXPORT DESC");
     page.init_display(&mut peripherals.display)?;
     page.draw_to(&mut peripherals.display)?;
     peripherals.display.flush()?;
@@ -494,7 +501,7 @@ pub async fn handle_set_descriptor_request(
 
                 // Make sure our key only appears somewhere
                 if !keys.iter().any(|k| matches!(k, MultisigKey::Local(_))) {
-                    return Err("Local key not missing".into());
+                    return Err("Local key missing".into());
                 }
 
                 DescriptorVariant::MultiSig {
@@ -634,7 +641,7 @@ pub async fn handle_set_descriptor_request(
 
     log::debug!("First address: {}", first_address);
     let address_str = first_address.to_string();
-    let mut page = ConfirmSetDescriptorAddressPage::new(&address_str);
+    let mut page = ShowScrollingAddressPage::new(&address_str, "Confirm first address", "HOLD BTN FOR NEXT PAGE");
     page.init_display(&mut peripherals.display)?;
     page.draw_to(&mut peripherals.display)?;
     peripherals.display.flush()?;
