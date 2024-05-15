@@ -20,7 +20,7 @@ use core::cell::RefCell;
 
 use hal::{stm32, tsc};
 
-const TSC_THRESHOLD: u16 = 1100;
+const TSC_THRESHOLD: u16 = 1200;
 
 pub struct Tsc<SAMPLE_PIN, CHANNEL_PIN> {
     tsc: tsc::Tsc<SAMPLE_PIN>,
