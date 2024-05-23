@@ -326,6 +326,8 @@ async fn manage_confirmation_loop<'s, C: MainContent>(
     peripherals: &mut HandlerPeripherals,
     page: &mut ConfirmBarPage<'s, C>,
 ) -> Result<(), crate::Error> {
+    #[cfg(feature = "device")]
+    let mut released_first = false;
     let mut pressing = false;
     let mut draw;
 
@@ -339,6 +341,11 @@ async fn manage_confirmation_loop<'s, C: MainContent>(
                     .send(Reply::Busy)
                     .await
                     .expect("Send should work");
+            }
+            #[cfg(feature = "device")]
+            Event::Input(v) if !released_first => {
+                // Get stuck in here while we wait for the user to lift its finger
+                released_first = !v;
             }
             Event::Input(v) if v != pressing => {
                 pressing = v;
