@@ -1,17 +1,17 @@
 // Portal Hardware Wallet firmware and supporting software libraries
-// 
+//
 // Copyright (C) 2024 Alekos Filini
-// 
+//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -33,8 +33,8 @@ use bdk::miniscript::{DescriptorPublicKey, ForEachKey};
 use bdk::HdKeyPaths;
 
 use gui::{
-    ShowScrollingAddressPage, GenericTwoLinePage, LoadingPage, Page, SigningTxPage,
-    SummaryPage, TxOutputPage, TxSummaryPage,
+    GenericTwoLinePage, LoadingPage, Page, ShowScrollingAddressPage, SigningTxPage, SummaryPage,
+    TxOutputPage, TxSummaryPage,
 };
 use model::{
     DescriptorVariant, ExtendedKey, MultisigKey, ScriptType, SerializedDerivationPath,
@@ -561,7 +561,12 @@ pub async fn handle_set_descriptor_request(
 
     let mut page = GenericTwoLinePage::new(
         "Address type",
-        new_wallet.config.secret.descriptor.script_type.display_name(),
+        new_wallet
+            .config
+            .secret
+            .descriptor
+            .script_type
+            .display_name(),
         "HOLD BTN FOR NEXT PAGE",
         50,
     );
@@ -641,7 +646,11 @@ pub async fn handle_set_descriptor_request(
 
     log::debug!("First address: {}", first_address);
     let address_str = first_address.to_string();
-    let mut page = ShowScrollingAddressPage::new(&address_str, "Confirm first address", "HOLD BTN FOR NEXT PAGE");
+    let mut page = ShowScrollingAddressPage::new(
+        &address_str,
+        "Confirm first address",
+        "HOLD BTN FOR NEXT PAGE",
+    );
     page.init_display(&mut peripherals.display)?;
     page.draw_to(&mut peripherals.display)?;
     peripherals.display.flush()?;

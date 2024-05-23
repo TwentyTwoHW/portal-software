@@ -1,17 +1,17 @@
 // Portal Hardware Wallet firmware and supporting software libraries
-// 
+//
 // Copyright (C) 2024 Alekos Filini
-// 
+//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -36,9 +36,7 @@ use bdk::keys::{
     DescriptorKey, DescriptorPublicKey, DescriptorSecretKey, ScriptContext, ValidNetworks,
 };
 
-use gui::{
-    GeneratingMnemonicPage, LoadingPage, MnemonicPage, Page, WelcomePage,
-};
+use gui::{GeneratingMnemonicPage, LoadingPage, MnemonicPage, Page, WelcomePage};
 use model::{Config, DeviceInfo};
 
 use super::*;
@@ -308,7 +306,9 @@ pub async fn handle_init(
             Some(model::Request::GetInfo) => {
                 peripherals
                     .nfc
-                    .send(model::Reply::Info(DeviceInfo::new_locked_uninitialized(env!("CARGO_PKG_VERSION"))))
+                    .send(model::Reply::Info(DeviceInfo::new_locked_uninitialized(
+                        env!("CARGO_PKG_VERSION"),
+                    )))
                     .await
                     .unwrap();
                 peripherals.nfc_finished.recv().await.unwrap();
@@ -374,7 +374,7 @@ pub async fn handle_locked(
                     .nfc
                     .send(model::Reply::Info(DeviceInfo::new_locked_initialized(
                         config.network,
-                        env!("CARGO_PKG_VERSION")
+                        env!("CARGO_PKG_VERSION"),
                     )))
                     .await
                     .unwrap();
@@ -569,7 +569,7 @@ pub async fn handle_unverified_config(
                         .send(model::Reply::Info(DeviceInfo::new_unverified_config(
                             config.network,
                             config.pair_code.is_some(),
-                            env!("CARGO_PKG_VERSION")
+                            env!("CARGO_PKG_VERSION"),
                         )))
                         .await
                         .unwrap();
