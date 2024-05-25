@@ -73,19 +73,13 @@ jobs:
         nix_path: nixpkgs=channel:nixos-unstable
     - name: Print nixpkgs version
       run: nix-instantiate --eval -E '(import <nixpkgs> {}).lib.version'
-    - uses: actions/cache@v2
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          ./target
-          ./firmware/target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-    - run: nix develop .#embedded --command bash -c "cd firmware && cargo build -Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort --no-default-features --features ${{ matrix.target }} --release"
+    - run: nix build .#firmware-${{ matrix.target }}
+    - run: sha256sum ./result/*
+    - run: echo "ARTIFACTS_DIR=$(readlink ./result)" >> $GITHUB_ENV
     - uses: actions/upload-artifact@v2
       with:
         name: firmware-${{ matrix.target }}
-        path: ./firmware/target/thumbv7em-none-eabihf/release/firmware
+        path: ${{ env.ARTIFACTS_DIR }}
 
   run-firmware-tests:
     runs-on: ubuntu-latest

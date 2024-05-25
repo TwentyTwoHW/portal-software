@@ -147,12 +147,13 @@
         packages.model = pkgs.callPackage ./model { inherit pkgs; craneLib = getCrane { withEmbedded = false; }; };
         packages.sdk = pkgs.callPackage ./sdk { inherit pkgs; craneLib = getCrane { withEmbedded = false; }; };
 
-        packages.firmware-emu = pkgs.callPackage ./firmware rec {
+        packages.firmware-emulator = pkgs.callPackage ./firmware rec {
           inherit pkgs;
           rustToolchain = getRust { withEmbedded = true; nightly = true; };
           craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
           variant = "emulator";
         };
+        packages.firmware-device = packages.firmware;
         packages.firmware = pkgs.callPackage ./firmware rec {
           inherit pkgs;
           rustToolchain = getRust { withEmbedded = true; nightly = true; };
