@@ -37,6 +37,11 @@ use super::*;
 use crate::version;
 use crate::Error;
 
+#[cfg(feature = "production")]
+const FIRMWARE_SIGNING_KEY: &'static str =
+    "4a02b085ae8acb13a6d5c494818baaa0798300150dc0bdb87bb6da24a8beaff4";
+
+#[cfg(not(feature = "production"))]
 const FIRMWARE_SIGNING_KEY: &'static str =
     "1608bd04cf3212070b3de57f4a2ad8e5108a103af037f878ec75f4a2068de610";
 
