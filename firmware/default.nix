@@ -45,7 +45,7 @@ let
     '';
     # strictDeps = true;
 
-    cargoExtraArgs = "-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort --target thumbv7em-none-eabihf --no-default-features --features=${variant} -v";
+    cargoExtraArgs = "-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort --target thumbv7em-none-eabihf --no-default-features --features=${variant},production -v";
     CC_thumbv7em_none_eabihf = "clang-17";
     CFLAGS_thumbv7em_none_eabihf = "-flto -fno-data-sections -fno-function-sections -fno-PIC -fno-stack-protector --target=thumbv7em-none-eabihf -mcpu=cortex-m4 -mthumb -I${pkgs.clang_17}/resource-root/include/ -I${pkgs.gcc-arm-embedded}/arm-none-eabi/include";
   };
