@@ -37,6 +37,7 @@ use model::{
 };
 
 mod inner_logic;
+mod psbt;
 
 pub const MAX_READ_FRAME: usize = 16;
 
@@ -272,9 +273,14 @@ impl PortalSdk {
 
         let psbt = send_with_retry!(self.requests, Request::SignPsbt(psbt.clone().into()), Ok(Reply::SignedPsbt(s)) => break Ok(s))?;
 
-        let mut psbt: model::bitcoin::util::psbt::Psbt =
-            deserialize(psbt.deref()).map_err(|_| SdkError::CommunicationError)?;
-        psbt.unsigned_tx = original_psbt.unsigned_tx.clone();
+        // We encode the signatures in a format that's almost psbt but incompatible in some cases,
+        // so we parse it manually here
+        let inputs =
+            psbt::PortalPsbt::parse(psbt.deref()).map_err(|_| SdkError::DeserializationError)?;
+        let mut psbt =
+            model::bitcoin::util::psbt::Psbt::from_unsigned_tx(original_psbt.unsigned_tx.clone())
+                .expect("Valid unsigned tx");
+        psbt.inputs = inputs.inputs;
 
         original_psbt
             .combine(psbt)
