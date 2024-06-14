@@ -585,6 +585,22 @@ impl InitializedConfig {
             encryption_key,
         })
     }
+
+    pub fn try_unlock_fast_boot(&self, key: &[u8; 32]) -> Result<UnlockedConfig, ()> {
+        if let MaybeEncrypted::Encrypted { data, nonce } = &self.secret {
+            let encryption_key = EncryptionKey::new_raw_key(key.clone(), *nonce);
+            let secret = encryption_key.decrypt(data.deref().as_ref())?;
+
+            Ok(UnlockedConfig {
+                secret,
+                network: self.network,
+                password: self.pair_code.clone(),
+                encryption_key: Some(encryption_key),
+            })
+        } else {
+            Err(())
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -645,6 +661,10 @@ impl UnlockedConfig {
             network: self.network,
             pair_code: self.password,
         }
+    }
+
+    pub fn get_key(&self) -> Option<&[u8; 32]> {
+        self.encryption_key.as_ref().map(|k| &k.key)
     }
 }
 
@@ -728,6 +748,19 @@ impl EncryptionKey {
         }
     }
 
+    pub fn new_raw_key(key: [u8; 32], nonce: u32) -> Self {
+        EncryptionKey { key, nonce }
+    }
+
+    pub fn new_stretch_key(key: &[u8], nonce: u32) -> Self {
+        let hash = sha256::Hash::hash(key);
+
+        EncryptionKey {
+            key: hash.into_inner(),
+            nonce,
+        }
+    }
+
     fn get_cipher(&self) -> impl aes_gcm::AeadCore + aes_gcm::aead::AeadMut {
         Aes256Gcm::new_from_slice(&self.key).expect("Correct length")
     }
@@ -738,14 +771,15 @@ impl EncryptionKey {
         Nonce::clone_from_slice(&nonce_bytes)
     }
 
-    pub fn decrypt(&self, data: &[u8]) -> Result<SecretData, ()> {
+    pub fn decrypt_raw(&self, data: &[u8]) -> Result<Vec<u8>, ()> {
         let nonce = self.get_nonce();
 
-        self.get_cipher()
-            .decrypt(&nonce, data)
-            .map_err(|_| ())
+        self.get_cipher().decrypt(&nonce, data).map_err(|_| ())
+    }
+
+    pub fn decrypt(&self, data: &[u8]) -> Result<SecretData, ()> {
+        self.decrypt_raw(data)
             .and_then(|data| minicbor::decode::<SecretData>(&data).map_err(|_| ()))
-            .map(|config| config)
     }
 
     pub fn encrypt(&mut self, data: &[u8]) -> Result<(Vec<u8>, u32), ()> {

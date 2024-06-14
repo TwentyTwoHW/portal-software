@@ -429,3 +429,8 @@ unsafe fn create_fake_clocks_pclk2_8mhz() -> hal::rcc::Clocks {
 }
 
 pub fn enable_debug_during_sleep(_: &mut hal::pac::Peripherals) {}
+
+#[derive(Debug)]
+pub enum FlashError {
+    CorruptedData
+}

@@ -34,6 +34,7 @@ use minicbor::bytes::ByteArray;
 use gui::{FwUpdateProgressPage, SingleLineTextPage, SummaryPage};
 
 use super::*;
+use crate::checkpoint;
 use crate::version;
 use crate::Error;
 
@@ -142,6 +143,8 @@ struct Checkpoint {
     midstate: Box<ByteArray<32>>,
     #[cbor(n(5))]
     tail: [u8; version::TAIL_SIZE],
+    #[cbor(n(6))]
+    erase_from: Option<usize>,
 }
 
 #[cfg_attr(feature = "emulator", allow(dead_code))]
@@ -150,7 +153,7 @@ struct FwUpdater<'h> {
     hash: sha256::HashEngine,
     page: usize,
     bank_to_flash: BankToFlash,
-    prev_checkpoint: Option<usize>,
+    erase_window_start: Option<usize>,
     tail: [u8; version::TAIL_SIZE],
 }
 
@@ -159,23 +162,35 @@ impl<'h> FwUpdater<'h> {
     fn new(
         flash: &mut UnlockedFlash,
         header: &'h FwUpdateHeader,
+        state: Option<checkpoint::FwUpdateState>,
         bank_to_flash: BankToFlash,
     ) -> Result<Self, Error> {
         #[cfg(feature = "device")]
         let checkpoint: Option<Checkpoint> = {
-            let mut buf = alloc::vec![0x00; 2048];
-            flash.read(
-                bank_to_flash.get_logical_address(BankStatus::Spare, 0),
-                &mut buf,
-            );
-
-            let len = u16::from_be_bytes(buf[..2].try_into().unwrap()) as usize;
-            if len >= 2048 - 2 {
-                None
-            } else if let Ok(ckpt) = minicbor::decode(&buf[2..2 + len]) {
-                Some(ckpt)
+            if let Some(state) = state {
+                Some(Checkpoint {
+                    first_page_midstate: header.first_page_midstate.clone(),
+                    signature: header.signature.clone(),
+                    next_page: state.next_page,
+                    midstate: state.midstate,
+                    tail: state.tail,
+                    erase_from: None,
+                })
             } else {
-                None
+                let mut buf = alloc::vec![0x00; hw::PAGE_SIZE];
+                flash.read(
+                    bank_to_flash.get_logical_address(BankStatus::Spare, 0),
+                    &mut buf,
+                );
+
+                let len = u16::from_be_bytes(buf[..2].try_into().unwrap()) as usize;
+                if len >= hw::PAGE_SIZE - 2 {
+                    None
+                } else if let Ok(ckpt) = minicbor::decode(&buf[2..2 + len]) {
+                    Some(ckpt)
+                } else {
+                    None
+                }
             }
         };
         #[cfg(feature = "emulator")]
@@ -199,7 +214,7 @@ impl<'h> FwUpdater<'h> {
                     ckpt.next_page,
                     ckpt.midstate
                 );
-                (ckpt.midstate.deref(), ckpt.next_page * 2048)
+                (ckpt.midstate.deref(), ckpt.next_page * hw::PAGE_SIZE)
             }
             None => {
                 // Let's use what the caller is claiming the hash to be - we will verify it later anyways
@@ -207,7 +222,7 @@ impl<'h> FwUpdater<'h> {
                     "Fresh update with first_page_midstate = {:02X?}",
                     header.first_page_midstate
                 );
-                (header.first_page_midstate.deref(), 2048)
+                (header.first_page_midstate.deref(), hw::PAGE_SIZE)
             }
         };
         let hash = sha256::HashEngine::from_midstate(
@@ -262,7 +277,7 @@ impl<'h> FwUpdater<'h> {
         {
             const CONFIG_PAGE: usize = 255;
 
-            let mut buf = alloc::vec![0x00; 2048];
+            let mut buf = alloc::vec![0x00; hw::PAGE_SIZE];
             flash.read(
                 bank_to_flash.get_logical_address(BankStatus::Active, CONFIG_PAGE),
                 &mut buf,
@@ -285,7 +300,7 @@ impl<'h> FwUpdater<'h> {
             hash,
             page: checkpoint.as_ref().map(|ckpt| ckpt.next_page).unwrap_or(1),
             bank_to_flash,
-            prev_checkpoint: checkpoint.as_ref().map(|ckpt| ckpt.next_page),
+            erase_window_start: checkpoint.as_ref().and_then(|ckpt| ckpt.erase_from),
             tail: checkpoint
                 .map(|ckpt| ckpt.tail)
                 .unwrap_or([0u8; version::TAIL_SIZE]),
@@ -298,6 +313,7 @@ impl<'h> FwUpdater<'h> {
             first_page_midstate: self.header.first_page_midstate.clone(),
             signature: self.header.signature.clone(),
             next_page: self.page,
+            erase_from: Some(self.page),
             midstate: Box::new(ByteArray::from(self.hash.midstate().into_inner())),
             tail: self.tail,
         };
@@ -307,7 +323,7 @@ impl<'h> FwUpdater<'h> {
         let len = (serialized.len() as u16).to_be_bytes();
         data.extend(serialized);
         (&mut data[..2]).copy_from_slice(&len);
-        data.resize(2048, 0x00);
+        data.resize(hw::PAGE_SIZE, 0x00);
 
         flash
             .erase_page(self.bank_to_flash.get_physical_page(BankStatus::Spare, 0))
@@ -323,8 +339,8 @@ impl<'h> FwUpdater<'h> {
     }
 
     #[cfg_attr(feature = "emulator", allow(unused_variables))]
-    fn chunk(&mut self, flash: &mut UnlockedFlash, data: &[u8]) -> Result<(), Error> {
-        if self.page * 2048 > self.header.size {
+    fn chunk(&mut self, flash: &mut UnlockedFlash, data: &[u8], rtc: &mut crate::hw::Rtc, fb_key: &[u8; 24]) -> Result<(), Error> {
+        if self.page * hw::PAGE_SIZE > self.header.size {
             return Err(Error::InvalidFirmware);
         }
 
@@ -335,7 +351,7 @@ impl<'h> FwUpdater<'h> {
             // If we are restarting from a checkpoint we don't know exactly where the previous update
             // stopped, so we may be rewriting over existing pages. Make sure to individually erase the
             // next `CHECKPOINT_PAGE_INTERVAL` pages before writing to them
-            match self.prev_checkpoint {
+            match self.erase_window_start {
                 Some(x) if self.page < x + CHECKPOINT_PAGE_INTERVAL => {
                     flash
                         .erase_page(
@@ -357,9 +373,9 @@ impl<'h> FwUpdater<'h> {
 
         log::debug!("Done!");
 
-        let data_end = match ((self.page + 1) * 2048).checked_sub(self.header.size) {
-            None => 2048,
-            Some(x) => 2048 - x,
+        let data_end = match ((self.page + 1) * hw::PAGE_SIZE).checked_sub(self.header.size) {
+            None => hw::PAGE_SIZE,
+            Some(x) => hw::PAGE_SIZE - x,
         };
 
         self.page += 1;
@@ -379,6 +395,14 @@ impl<'h> FwUpdater<'h> {
             self.save_checkpoint(flash)?;
             log::debug!("Saved checkpoint");
         }
+
+        let state = checkpoint::FwUpdateState {
+            next_page: self.page,
+            midstate: Box::new(ByteArray::from(self.hash.midstate().into_inner())),
+            tail: self.tail,
+        };
+        let fb_checkpoint = checkpoint::Checkpoint::new_with_key(checkpoint::CheckpointVariant::UpdateFirmware { state }, None, None, fb_key.clone());
+        fb_checkpoint.commit_registers(rtc);
 
         Ok(())
     }
@@ -463,34 +487,56 @@ impl<'h> FwUpdater<'h> {
 
 pub async fn handle_begin_fw_update(
     header: &FwUpdateHeader,
+    fast_boot: Option<(checkpoint::FwUpdateState, [u8; 24])>,
     mut events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
 ) -> Result<CurrentState, Error> {
     log::info!("handle_begin_fw_update");
 
-    if header.size > 510 * 2048 {
-        peripherals
-            .nfc
-            .send(model::Reply::Error("Firmware file too big".into()))
-            .await
-            .unwrap();
-        return Err(Error::InvalidFirmware);
-    }
+    let (state, fb_key) = match fast_boot {
+        None => {
+            if header.size > hw::MAX_FW_PAGES * hw::PAGE_SIZE {
+                peripherals
+                    .nfc
+                    .send(model::Reply::Error("Firmware file too big".into()))
+                    .await
+                    .unwrap();
+                return Err(Error::InvalidFirmware);
+            }
 
-    peripherals
-        .nfc
-        .send(model::Reply::DelayedReply)
-        .await
-        .unwrap();
+            peripherals
+                .nfc
+                .send(model::Reply::DelayedReply)
+                .await
+                .unwrap();
 
-    let mut page = SummaryPage::new_with_threshold("Update FW?", "HOLD BTN TO BEGIN", 70);
-    page.init_display(&mut peripherals.display)?;
-    page.draw_to(&mut peripherals.display)?;
-    peripherals.display.flush()?;
+            let mut page = SummaryPage::new_with_threshold("Update FW?", "HOLD BTN TO BEGIN", 70);
+            page.init_display(&mut peripherals.display)?;
+            page.draw_to(&mut peripherals.display)?;
+            peripherals.display.flush()?;
 
-    peripherals.tsc_enabled.enable();
-    manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
-    peripherals.tsc_enabled.disable();
+            peripherals.tsc_enabled.enable();
+            manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+            peripherals.tsc_enabled.disable();
+
+            // Save fast boot checkpoint
+            let state = checkpoint::FwUpdateState {
+                midstate: Box::new([0u8; 32].into()),
+                next_page: 0,
+                tail: [0; version::TAIL_SIZE],
+            };
+            let fb_checkpoint = checkpoint::Checkpoint::new(checkpoint::CheckpointVariant::UpdateFirmware { state }, Some(minicbor::to_vec(&header).unwrap()), None, &mut peripherals.rng);
+            fb_checkpoint.commit(peripherals)?;
+
+            (None, *fb_checkpoint.encryption_key)
+        },
+        Some((state, key)) if state.next_page == 0 => {
+            (None, key.into())
+        },
+        Some((state, key)) => {
+            (Some(state), key.into())
+        }
+    };
 
     let mut page = FwUpdateProgressPage::new(header.size as u32);
     page.init_display(&mut peripherals.display)?;
@@ -518,8 +564,8 @@ pub async fn handle_begin_fw_update(
         true => FlashBank::Bank1,
     };
     log::debug!("Flashing to bank: {:?}", bank_to_flash);
-    let mut updater = FwUpdater::new(&mut lock, header, BankToFlash::new(bank_to_flash))?;
-    page.add_confirm((2048 * updater.page) as u32); // account for the potential checkpoint
+    let mut updater = FwUpdater::new(&mut lock, header, state, BankToFlash::new(bank_to_flash))?;
+    page.add_confirm((hw::PAGE_SIZE * updater.page) as u32); // account for the potential checkpoint
     page.draw_to(&mut peripherals.display)?;
     peripherals.display.flush()?;
 
@@ -533,7 +579,7 @@ pub async fn handle_begin_fw_update(
     loop {
         match events.next().await {
             Some(model::Request::FwUpdateChunk(data)) => {
-                updater.chunk(&mut lock, data.deref().deref())?;
+                updater.chunk(&mut lock, data.deref().deref(), &mut peripherals.rtc, &fb_key)?;
                 peripherals
                     .nfc
                     .send(model::Reply::NextPage(updater.page))
@@ -541,7 +587,7 @@ pub async fn handle_begin_fw_update(
                     .unwrap();
                 peripherals.nfc_finished.recv().await.unwrap();
 
-                page.add_confirm(2048);
+                page.add_confirm(hw::PAGE_SIZE as u32);
                 page.draw_to(&mut peripherals.display)?;
                 peripherals.display.flush()?;
             }

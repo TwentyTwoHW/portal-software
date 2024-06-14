@@ -19,18 +19,13 @@ use super::hw::Flash;
 
 use model::Config;
 
-pub async fn read_config(flash: &mut Flash) -> Result<Config, ConfigError> {
+pub async fn read_config(flash: &mut Flash) -> Result<Config, super::hw::FlashError> {
     let flash = flash.read().await;
     Ok(minicbor::decode(&flash).map_err(|_| ConfigError::CorruptedConfig)?)
 }
 
-pub async fn write_config(flash: &mut Flash, config: &Config) -> Result<(), ConfigError> {
+pub async fn write_config(flash: &mut Flash, config: &Config) -> Result<(), super::hw::FlashError> {
     let buf = minicbor::to_vec(config).unwrap();
     flash.write(&buf);
     Ok(())
-}
-
-#[derive(Debug)]
-pub enum ConfigError {
-    CorruptedConfig,
 }

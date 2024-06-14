@@ -303,6 +303,10 @@ where
         self.confirmed = 0;
     }
 
+    pub fn get_confirm(&self) -> u32 {
+        self.confirmed
+    }
+
     pub fn tick(&mut self) -> bool {
         self.main_content.tick()
     }

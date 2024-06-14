@@ -59,6 +59,8 @@ pub async fn handle_idle(
                 break Ok(CurrentState::DisplayAddress {
                     index,
                     wallet: Rc::clone(wallet),
+                    resumable: checkpoint::Resumable::fresh(),
+                    is_fast_boot: false,
                 });
             }
             Some(model::Request::BeginSignPsbt) => {
@@ -69,12 +71,17 @@ pub async fn handle_idle(
             Some(model::Request::PublicDescriptor) => {
                 break Ok(CurrentState::PublicDescriptor {
                     wallet: Rc::clone(wallet),
+                    resumable: checkpoint::Resumable::fresh(),
+                    is_fast_boot: false,
                 });
             }
             Some(model::Request::GetXpub(derivation_path)) => {
                 break Ok(CurrentState::GetXpub {
                     wallet: Rc::clone(wallet),
                     derivation_path: derivation_path.into(),
+                    resumable: checkpoint::Resumable::fresh(),
+                    is_fast_boot: false,
+                    encryption_key: checkpoint::Checkpoint::gen_key(&mut peripherals.rng),
                 });
             }
             Some(model::Request::SetDescriptor {
@@ -87,10 +94,13 @@ pub async fn handle_idle(
                     variant,
                     script_type,
                     bsms,
+                    resumable: checkpoint::Resumable::fresh(),
+                    is_fast_boot: false,
+                    encryption_key: checkpoint::Checkpoint::gen_key(&mut peripherals.rng),
                 });
             }
             Some(model::Request::BeginFwUpdate(header)) => {
-                break Ok(CurrentState::UpdatingFw { header });
+                break Ok(CurrentState::UpdatingFw { header, fast_boot: None });
             }
             Some(_) => {
                 peripherals

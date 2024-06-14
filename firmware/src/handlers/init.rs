@@ -43,8 +43,8 @@ use super::*;
 use crate::config;
 use crate::Error;
 
-fn map_err_config<X>(_: X) -> config::ConfigError {
-    config::ConfigError::CorruptedConfig
+fn map_err_config<X>(_: X) -> crate::hw::FlashError {
+    crate::hw::FlashError::CorruptedData
 }
 
 // Ignore the network check on each key: we fully control the network of our
@@ -168,7 +168,7 @@ fn build_bdk_descriptor(
                     ScriptType::WrappedSegwit => {
                         Ok(bdk::descriptor!(sh(wsh(sortedmulti_vec(threshold, keys))))?)
                     }
-                    ScriptType::Legacy => Err(Error::Config(config::ConfigError::CorruptedConfig)),
+                    ScriptType::Legacy => Err(Error::Config(crate::hw::FlashError::CorruptedData)),
                 }
             } else {
                 return Err(Error::Wallet);
@@ -215,46 +215,66 @@ pub(super) fn make_wallet_from_xprv(
     Ok(PortalWallet::new(wallet, xprv, config))
 }
 
-pub async fn handle_por(peripherals: &mut HandlerPeripherals) -> Result<CurrentState, Error> {
-    let page = LoadingPage::new();
-    page.init_display(&mut peripherals.display)?;
-    page.draw_to(&mut peripherals.display)?;
-    peripherals.display.flush()?;
+pub trait TryIntoCurrentState {
+    fn try_into_current_state(self, rtc: &crate::hw::Rtc) -> Result<CurrentState, Error>;
+}
 
-    let config = match config::read_config(&mut peripherals.flash).await {
+impl TryIntoCurrentState for Config {
+    fn try_into_current_state(self, rtc: &crate::hw::Rtc) -> Result<CurrentState, Error> {
+        let config = match self {
+            Config::Initialized(InitializedConfig {
+                secret: model::MaybeEncrypted::Unencrypted(secret),
+                network,
+                ..
+            }) => {
+                log::debug!("Unencrypted config loaded");
+                UnlockedConfig::from_secret_data_unencrypted(secret, network)
+            }
+            Config::Initialized(
+                initialized @ InitializedConfig {
+                    secret: model::MaybeEncrypted::Encrypted { .. },
+                    ..
+                },
+            ) => {
+                let fast_boot_key = crate::checkpoint::get_fastboot_key(&rtc);
+                match initialized.try_unlock_fast_boot(&fast_boot_key) {
+                    Ok(unlock) => unlock,
+                    Err(_) => return Ok(CurrentState::Locked {
+                        config: initialized,
+                    })
+                }
+            },
+            Config::Unverified(unverified) => return Ok(CurrentState::UnverifiedConfig { config: unverified }),
+        };
+
+        let xprv = config.secret.cached_xprv.as_xprv().map_err(map_err_config)?;
+        Ok(CurrentState::Idle {
+            wallet: Rc::new(make_wallet_from_xprv(
+                xprv,
+                config.network,
+                config,
+            )?),
+        })
+    }
+}
+
+pub async fn handle_por(peripherals: &mut HandlerPeripherals, fast_boot: bool) -> Result<CurrentState, Error> {
+    if !fast_boot {
+        let page = LoadingPage::new();
+        page.init_display(&mut peripherals.display)?;
+        page.draw_to(&mut peripherals.display)?;
+        peripherals.display.flush()?;
+    }
+
+    let config = match config::read_config(&mut peripherals.flash) {
         Ok(config) => config,
         Err(e) => {
             log::warn!("Config error: {:?}", e);
             return Ok(CurrentState::Init);
         }
     };
-    match config {
-        Config::Initialized(InitializedConfig {
-            secret: model::MaybeEncrypted::Unencrypted(secret),
-            network,
-            ..
-        }) => {
-            log::debug!("Unencrypted config loaded");
 
-            let xprv = secret.cached_xprv.as_xprv().map_err(map_err_config)?;
-            Ok(CurrentState::Idle {
-                wallet: Rc::new(make_wallet_from_xprv(
-                    xprv,
-                    network,
-                    UnlockedConfig::from_secret_data_unencrypted(secret, network),
-                )?),
-            })
-        }
-        Config::Initialized(
-            initialized @ InitializedConfig {
-                secret: model::MaybeEncrypted::Encrypted { .. },
-                ..
-            },
-        ) => Ok(CurrentState::Locked {
-            config: initialized,
-        }),
-        Config::Unverified(unverified) => Ok(CurrentState::UnverifiedConfig { config: unverified }),
-    }
+    config.try_into_current_state(&peripherals.rtc)
 }
 
 #[cfg(feature = "device")]
@@ -338,7 +358,7 @@ pub async fn handle_init(
             }
             #[cfg(feature = "emulator")]
             Some(model::Request::BeginFwUpdate(header)) => {
-                break Ok(CurrentState::UpdatingFw { header });
+                break Ok(CurrentState::UpdatingFw { header, fast_boot: None });
             }
             Some(_) => {
                 peripherals
@@ -399,13 +419,18 @@ pub async fn handle_locked(
 
                 let unlocked = config
                     .unlock(&password)
-                    .map_err(|_| Error::Config(config::ConfigError::CorruptedConfig))?;
+                    .map_err(|_| Error::Config(crate::hw::FlashError::CorruptedData))?;
                 let xprv = unlocked
                     .secret
                     .cached_xprv
                     .as_xprv()
                     .map_err(map_err_config)?;
                 peripherals.nfc.send(model::Reply::Ok).await.unwrap();
+
+                // Set key for fastboot
+                if let Some(key) = unlocked.get_key() {
+                    crate::checkpoint::write_fastboot_key(key, &peripherals.rtc);
+                }
 
                 break Ok(CurrentState::Idle {
                     wallet: Rc::new(make_wallet_from_xprv(xprv, unlocked.network, unlocked)?),
@@ -461,7 +486,7 @@ pub async fn display_mnemonic(
 
     let network = config.network;
     let (initialized, unlocked, xprv) = config.upgrade(salt);
-    config::write_config(&mut peripherals.flash, &Config::Initialized(initialized)).await?;
+    config::write_config(&mut peripherals.flash, &Config::Initialized(initialized))?;
 
     peripherals.nfc.send(model::Reply::Ok).await.unwrap();
     peripherals.nfc_finished.recv().await.unwrap();
@@ -476,7 +501,7 @@ async fn save_unverified_config(
     peripherals: &mut HandlerPeripherals,
 ) -> Result<UnverifiedConfig, Error> {
     let config = Config::Unverified(unverified_config);
-    config::write_config(&mut peripherals.flash, &config).await?;
+    config::write_config(&mut peripherals.flash, &config)?;
     let unverified_config = match config {
         Config::Unverified(c) => c,
         _ => unreachable!(),

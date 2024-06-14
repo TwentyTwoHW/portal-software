@@ -38,6 +38,8 @@ extern crate stm32l4xx_hal as hal;
 
 #[cfg(feature = "device")]
 mod config;
+#[cfg(feature = "device")]
+mod checkpoint;
 #[cfg(feature = "emulator")]
 pub use emulator::config;
 #[cfg(feature = "emulator")]
@@ -114,14 +116,6 @@ pub mod unified_hal {
     }
 }
 
-pub struct KeyDebugWrapper(model::encryption::Sensitive<[u8; 32]>);
-
-impl core::fmt::Debug for KeyDebugWrapper {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str("Sensitive<[u8; 32]>")
-    }
-}
-
 #[rtic::app(device = unified_hal, peripherals = true, dispatchers = [CAN1_RX0, CAN1_RX1])]
 mod app {
     use crate::hw_common::TscEnable;
@@ -129,7 +123,9 @@ mod app {
     use super::*;
 
     #[shared]
-    struct Shared {}
+    struct Shared {
+        fast_boot: bool,
+    }
 
     #[local]
     struct Local {
@@ -185,8 +181,10 @@ mod app {
         dp.RCC.apb2enr.write(|w| w.syscfgen().set_bit());
 
         #[allow(unused_mut)]
-        let (mut nfc, nfc_interrupt, nfc_finished, display, tsc, mut rng, flash) =
+        let (mut nfc, nfc_interrupt, nfc_finished, display, tsc, mut rng, flash, rtc, fast_boot) =
             hw::init_peripherals(dp, cp).unwrap();
+
+        log::debug!("Initialized peripherals");
 
         let tsc_enabled = TscEnable::new(tsc.get_enabled_ref());
 
@@ -197,6 +195,21 @@ mod app {
 
         let mut noise_rng = rng.clone();
         noise_rng.set_stream(0xFF);
+
+        let mut peripherals = HandlerPeripherals {
+                    display,
+                    rng,
+                    flash,
+                    rtc,
+                    nfc: nfc_shared.outgoing,
+                    nfc_finished,
+                    tsc_enabled,
+                };
+        let current_state = if fast_boot {
+            checkpoint::Checkpoint::load(&mut peripherals).inspect(|v| log::debug!("Found FB: {:?}", v)).and_then(|checkpoint| checkpoint.into_current_state(&mut peripherals)).unwrap_or(CurrentState::POR)
+        } else {
+            CurrentState::POR
+        };
 
         nfc_read_loop::spawn(noise_rng).unwrap();
         timer_ticking::spawn().unwrap();
@@ -234,26 +247,21 @@ mod app {
         };
 
         (
-            Shared {},
+            Shared {
+                fast_boot,
+            },
             Local {
                 nfc: (nfc, nfc_local),
                 nfc_interrupt,
                 tsc: (tsc, tsc_sender),
-                current_state: CurrentState::POR,
+                current_state,
                 events: (
                     RefCell::new(nfc_shared.incoming),
                     RefCell::new(tsc_receiver),
                     RefCell::new(timer_receiver),
                 ),
                 timer_sender,
-                peripherals: HandlerPeripherals {
-                    display,
-                    rng,
-                    flash,
-                    nfc: nfc_shared.outgoing,
-                    nfc_finished,
-                    tsc_enabled,
-                },
+                peripherals,
 
                 #[cfg(feature = "emulator")]
                 emulator_channels,
@@ -268,8 +276,8 @@ mod app {
         }
     }
 
-    #[task(priority = 1, local = [current_state, peripherals, events])]
-    async fn main_task(cx: main_task::Context) {
+    #[task(priority = 1, local = [current_state, peripherals, events], shared = [fast_boot])]
+    async fn main_task(mut cx: main_task::Context) {
         let stream = futures::stream::repeat(&cx.local.events);
         let stream = stream.then(|(nfc_incoming, last_tsc_read, timer)| async move {
             let mut nfc_incoming = nfc_incoming.borrow_mut();
@@ -292,9 +300,10 @@ mod app {
         });
 
         pin_mut!(stream);
+        let fast_boot = cx.shared.fast_boot.lock(|v| *v);
 
         loop {
-            dispatch_handler(cx.local.current_state, &mut stream, cx.local.peripherals).await;
+            dispatch_handler(cx.local.current_state, &mut stream, cx.local.peripherals, fast_boot).await;
         }
     }
 

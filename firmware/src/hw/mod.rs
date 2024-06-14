@@ -18,7 +18,8 @@
 use hal::i2c::{self, I2c};
 use hal::prelude::*;
 use hal::rcc::{Enable, MsiFreq};
-use hal::{flash, gpio, stm32};
+use hal::{gpio, stm32, rtc};
+use hal::flash::{self, Read, WriteErase};
 use rand::prelude::*;
 
 use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
@@ -28,9 +29,16 @@ pub mod tsc;
 
 use nt3h::Nt3h;
 
+use crate::checkpoint;
+
 pub type AltOpenDrain<const A: u8> = gpio::Alternate<gpio::OpenDrain, A>;
 pub type AltPushPull<const A: u8> = gpio::Alternate<gpio::PushPull, A>;
 pub type FloatingInput = gpio::Input<gpio::Floating>;
+
+pub use rtc::Rtc;
+
+pub const PAGE_SIZE: usize = 2048;
+pub const MAX_FW_PAGES: usize = 508;
 
 pub fn enable_debug_during_sleep(dp: &mut stm32::Peripherals) {
     // Allow debugging during sleep
@@ -84,19 +92,30 @@ pub fn init_peripherals(
         Tsc,
         rand_chacha::ChaCha20Rng,
         Flash,
+        Rtc,
+        bool,
     ),
     crate::Error,
 > {
     let mut rcc = dp.RCC.constrain();
+    let mut pwr = dp.PWR.constrain(&mut rcc.apb1r1);
 
     let mut gpioa = dp.GPIOA.split(&mut rcc.ahb2);
     let mut gpiob = dp.GPIOB.split(&mut rcc.ahb2);
 
+    let rtc = rtc::Rtc::rtc(dp.RTC, &mut rcc.apb1r1, &mut rcc.bdcr, &mut pwr.cr1, rtc::RtcConfig::default());
+    let fast_boot = rtc.read_backup_register(checkpoint::MAGIC_REGISTER) == Some(checkpoint::MAGIC);
+    if !fast_boot {
+        rtc.write_backup_register(checkpoint::MAGIC_REGISTER, checkpoint::MAGIC);
+    }
+
     // Put display in RESET while we initialize stuff
     let mut display_reset = gpiob
         .pb12
-        .into_push_pull_output(&mut gpiob.moder, &mut gpiob.otyper);
-    display_reset.set_low();
+        .into_push_pull_output_in_state(&mut gpiob.moder, &mut gpiob.otyper, PinState::High);
+    if !fast_boot {
+        display_reset.set_low();
+    }
 
     // Seed the RNG *before* we switch to LPR. LPR works at most with MSI 2MHz
     // and the PLL needs at least MSI 4MHz to work (which is the default after reset)
@@ -149,7 +168,6 @@ pub fn init_peripherals(
     };
 
     // Switch to MSI 24MHz
-    let mut pwr = dp.PWR.constrain(&mut rcc.apb1r1);
     let mut flash = dp.FLASH.constrain();
     let clocks = rcc
         .cfgr
@@ -209,8 +227,12 @@ pub fn init_peripherals(
 
     let mut display = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate180)
         .into_buffered_graphics_mode();
-    display.init()?;
-    display.set_brightness(Brightness::DIMMEST)?;
+    if !fast_boot {
+        display.init()?;
+        display.set_brightness(Brightness::DIMMEST)?;
+    } else {
+        display.set_addr_mode(ssd1306::command::AddrMode::Horizontal)?;
+    }
 
     let sample_pin =
         gpiob
@@ -237,12 +259,69 @@ pub fn init_peripherals(
 
     let tsc = Tsc::new(tsc, channel_pin);
 
-    Ok((nt3h, nfc_interrupt, nfc_finished, display, tsc, rng, flash))
+    Ok((nt3h, nfc_interrupt, nfc_finished, display, tsc, rng, flash, rtc, fast_boot))
 }
 
 pub struct Flash {
     pub parts: flash::Parts,
     pub fb_mode: bool,
+}
+
+pub fn read_flash<'b>(flash: &mut Flash, page: usize, buf: &'b mut [u8; 2048]) -> Result<&'b [u8], FlashError> {
+    let flash = &mut flash.parts;
+
+    let prog = flash.keyr.unlock_flash(&mut flash.sr, &mut flash.cr)?;
+
+    let page_to_read = flash::FlashPage(page).to_address();
+
+    prog.read(page_to_read, buf);
+    let len = u16::from_be_bytes(buf[..2].try_into().unwrap()) as usize;
+    if len >= PAGE_SIZE - 2 {
+        return Err(FlashError::CorruptedData);
+    }
+
+    Ok(&buf[2..2 + len])
+}
+
+pub fn write_flash(flash: &mut Flash, page: usize, serialized: &[u8]) -> Result<(), FlashError> {
+    let flash = &mut flash.parts;
+
+    let mut prog = flash.keyr.unlock_flash(&mut flash.sr, &mut flash.cr)?;
+
+    if serialized.len() > PAGE_SIZE - 2 {
+        return Err(FlashError::CorruptedData);
+    }
+
+    let mut data = alloc::vec![];
+    let len = (serialized.len() as u16).to_be_bytes();
+    data.extend_from_slice(&len);
+    data.extend(serialized);
+    data.resize(PAGE_SIZE, 0x00);
+
+    let page = flash::FlashPage(page);
+    prog.erase_page(page)?;
+    prog.write(page.to_address(), &data)?;
+
+    Ok(())
+}
+
+#[derive(Debug)]
+pub enum FlashError {
+    CorruptedData,
+    Deserialization,
+
+    Flash(flash::Error),
+}
+
+impl From<minicbor::decode::Error> for FlashError {
+    fn from(_: minicbor::decode::Error) -> Self {
+        FlashError::Deserialization
+    }
+}
+impl From<flash::Error> for FlashError {
+    fn from(e: flash::Error) -> Self {
+        FlashError::Flash(e)
+    }
 }
 
 unsafe fn create_fake_clocks_with_hsi48_on() -> hal::rcc::Clocks {

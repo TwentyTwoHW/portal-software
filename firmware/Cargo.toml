@@ -17,7 +17,7 @@ cortex-m-rt = { version = "0.7.3", features = ["set-vtor"] }
 embedded-alloc = "0.5"
 display-interface = "^0.4.1"
 ssd1306 = "0.8"
-minicbor = { version = "0.21", default-features = false, features = ["alloc", "derive"] }
+minicbor = { version = "0.24.1", default-features = false, features = ["alloc", "derive"] }
 rand = { version = "0.8", default-features = false }
 rand_chacha = { version = "0.3", default-features = false }
 log = "0.4"
@@ -36,7 +36,8 @@ embedded-hal-02 = { package = "embedded-hal", version = "0.2.6", optional = true
 
 rtt-target = { version = "0.5", optional = true }
 rtt-log = { version = "0.3", optional = true }
-stm32l4xx-hal = { version = "0.7.1", features = ["stm32l476", "rt"], optional = true }
+# stm32l4xx-hal = { version = "0.7.1", features = ["stm32l476", "rt"], optional = true }
+stm32l4xx-hal = { git = "http://github.com/TwentyTwoHW/stm32l4xx-hal.git", rev = "120f868c9325b7a72ea6958d18c935c19e878db4", features = ["stm32l476", "rt"], optional = true }
 
 # panic-probe = { version = "0.2", features = ["print-rtt"], optional = true }
 cortex-m-semihosting = { version = "0.5", optional = true }

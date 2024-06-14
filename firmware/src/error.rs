@@ -17,7 +17,7 @@
 
 use hal::i2c;
 
-use crate::config;
+use crate::hw;
 
 #[derive(Debug)]
 pub enum Error {
@@ -37,7 +37,7 @@ pub enum Error {
     FlashError,
     I2c(i2c::Error),
     // State(state::StateError),
-    Config(config::ConfigError),
+    Config(hw::FlashError),
     Message(model::MessageError),
     Display(display_interface::DisplayError),
 }
@@ -52,8 +52,8 @@ impl From<i2c::Error> for Error {
 //         Error::State(e)
 //     }
 // }
-impl From<config::ConfigError> for Error {
-    fn from(e: config::ConfigError) -> Self {
+impl From<hw::FlashError> for Error {
+    fn from(e: hw::FlashError) -> Self {
         Error::Config(e)
     }
 }

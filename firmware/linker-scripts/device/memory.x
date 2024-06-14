@@ -1,7 +1,7 @@
 /* Linker script for the STM32L476 */
 MEMORY
 {
-    FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 510K
+    FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 508K
     /* FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 768K */
     DATA (r) : ORIGIN = 0x0807F800, LENGTH = 2K
     /* Use the largest section of memory for the HEAP */

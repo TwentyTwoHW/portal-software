@@ -33,7 +33,7 @@ use bdk::miniscript::{DescriptorPublicKey, ForEachKey};
 use bdk::HdKeyPaths;
 
 use gui::{
-    GenericTwoLinePage, LoadingPage, Page, ShowScrollingAddressPage, SigningTxPage, SummaryPage,
+    GenericTwoLinePage, LoadingPage, Page, ShowScrollingAddressPage, SummaryPage,
     TxOutputPage, TxSummaryPage,
 };
 use model::{
@@ -42,7 +42,7 @@ use model::{
 };
 
 use super::*;
-use crate::Error;
+use crate::{checkpoint, Error};
 
 type SecpCtx = secp256k1::Secp256k1<secp256k1::All>;
 
@@ -91,7 +91,6 @@ impl CurrentSignatures {
 pub async fn handle_sign_request(
     wallet: &mut Rc<PortalWallet>,
     psbt: &[u8],
-    mut events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
 ) -> Result<CurrentState, Error> {
     log::info!("handle_sign_request");
@@ -142,40 +141,26 @@ pub async fn handle_sign_request(
         .fold(0, |sum, utxo| sum + utxo.value);
     let fees = total_input_value.checked_sub(total_output_value).unwrap();
 
-    peripherals.tsc_enabled.enable();
+    let outputs = psbt.unsigned_tx.output.iter().zip(psbt.outputs.iter())
+        .filter_map(|(out, psbt_out)| {
+            if wallet
+                .get_descriptor_for_keychain(bdk::KeychainKind::Internal)
+                .derive_from_psbt_output(psbt_out, &wallet.secp_ctx())
+                .is_some()
+            {
+                // Hide our change outputs
+                None
+            } else {
+                let address = Address::from_script(&out.script_pubkey, wallet.network()).unwrap();
+                Some((checkpoint::CborAddress(address), out.value))
+            }
+        })
+        .collect::<Vec<_>>();
 
-    for (out, psbt_out) in psbt.unsigned_tx.output.iter().zip(psbt.outputs.iter()) {
-        if wallet
-            .get_descriptor_for_keychain(bdk::KeychainKind::Internal)
-            .derive_from_psbt_output(psbt_out, &wallet.secp_ctx())
-            .is_some()
-        {
-            // Hide our change outputs
-            continue;
-        }
-
-        let address = Address::from_script(&out.script_pubkey, wallet.network()).unwrap();
-        let value = Amount::from_sat(out.value);
-
-        let mut page = TxOutputPage::new(&address, value);
-        page.init_display(&mut peripherals.display)?;
-        page.draw_to(&mut peripherals.display)?;
-        peripherals.display.flush()?;
-
-        manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
-    }
-
-    let mut page = TxSummaryPage::new(Amount::from_sat(fees));
-    page.init_display(&mut peripherals.display)?;
-    page.draw_to(&mut peripherals.display)?;
-    peripherals.display.flush()?;
-
-    manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
-
-    let page = SigningTxPage::new();
-    page.init_display(&mut peripherals.display)?;
-    page.draw_to(&mut peripherals.display)?;
-    peripherals.display.flush()?;
+    // let page = SigningTxPage::new();
+    // page.init_display(&mut peripherals.display)?;
+    // page.draw_to(&mut peripherals.display)?;
+    // peripherals.display.flush()?;
 
     let current_sigs = CurrentSignatures::from_psbt(&psbt);
 
@@ -190,6 +175,66 @@ pub async fn handle_sign_request(
         .unwrap();
 
     let diff = CurrentSignatures::diff(&current_sigs, psbt);
+    let mut sig_bytes = alloc::vec![];
+
+    use bdk::bitcoin::consensus::encode::Encodable;
+    for input in &diff {
+        input
+            .consensus_encode(&mut sig_bytes)
+            .expect("Encoding succeeds");
+    }
+
+    let sign_state = checkpoint::SignPsbtState {
+        fees,
+        outputs,
+        sig_bytes: sig_bytes.clone().into(),
+    };
+    let aux_data = minicbor::to_vec(&sign_state).expect("Encoding works");
+    let resumable = checkpoint::Resumable::fresh();
+    let checkpoint = checkpoint::Checkpoint::new(checkpoint::CheckpointVariant::SignPsbt, Some(aux_data), Some(resumable), &mut peripherals.rng);
+    checkpoint.commit(peripherals)?;
+
+    Ok(CurrentState::ConfirmSignPsbt { wallet: Rc::clone(wallet), outputs: sign_state.outputs, fees, sig_bytes, encryption_key: (*checkpoint.encryption_key).into(), resumable, })
+}
+
+pub async fn handle_confirm_sign_psbt(
+    wallet: &mut Rc<PortalWallet>,
+    outputs: &[(checkpoint::CborAddress, u64)],
+    fees: u64,
+    resumable: checkpoint::Resumable,
+    sig_bytes: Vec<u8>,
+    encryption_key: [u8; 24],
+    mut events: impl Stream<Item = Event> + Unpin,
+    peripherals: &mut HandlerPeripherals,
+) -> Result<CurrentState, Error> {
+    log::info!("handle_confirm_sign_psbt");
+
+    peripherals.tsc_enabled.enable();
+    let mut checkpoint = checkpoint::Checkpoint::new_with_key(checkpoint::CheckpointVariant::SignPsbt, None, Some(resumable), encryption_key.clone());
+
+    for ((address, value), state, draw) in resumable.wrap_iter(outputs.iter()) {
+        let value = Amount::from_sat(*value);
+
+        let mut page = TxOutputPage::new(&address, value);
+        page.init_display(&mut peripherals.display)?;
+        page.draw_to(&mut peripherals.display)?;
+        if draw {
+            peripherals.display.flush()?;
+        }
+
+        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+    }
+
+    if let Some((state, draw)) = resumable.single_page_with_offset(outputs.len()) {
+        let mut page = TxSummaryPage::new(Amount::from_sat(fees));
+        page.init_display(&mut peripherals.display)?;
+        page.draw_to(&mut peripherals.display)?;
+        if draw {
+            peripherals.display.flush()?;
+        }
+
+        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+    }
 
     #[rustfmt::skip]
     let mut empty_psbt = alloc::vec![
@@ -202,13 +247,7 @@ pub async fn handle_sign_request(
             0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00 // End global map
     ];
-
-    use bdk::bitcoin::consensus::encode::Encodable;
-    for input in &diff {
-        input
-            .consensus_encode(&mut empty_psbt)
-            .expect("Encoding succeeds");
-    }
+    empty_psbt.extend(sig_bytes);
 
     peripherals
         .nfc
@@ -260,37 +299,50 @@ pub async fn handle_waiting_for_psbt(
 pub async fn handle_display_address_request(
     wallet: &mut Rc<PortalWallet>,
     index: u32,
+    resumable: checkpoint::Resumable,
+    is_fast_boot: bool,
     mut events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
 ) -> Result<CurrentState, Error> {
     log::info!("handle_display_address_request");
 
-    peripherals
-        .nfc
-        .send(model::Reply::DelayedReply)
-        .await
-        .unwrap();
-
+    let mut checkpoint = checkpoint::Checkpoint::new_with_key(checkpoint::CheckpointVariant::DisplayAddress(index), None, Some(resumable), checkpoint::Checkpoint::gen_key(&mut peripherals.rng));
+    if !is_fast_boot {
+        peripherals
+            .nfc
+            .send(model::Reply::DelayedReply)
+            .await
+            .unwrap();
+    }
+ 
     peripherals.tsc_enabled.enable();
 
-    let s = alloc::format!("Display\nAddress #{}?", index);
-    let mut page = SummaryPage::new_with_threshold(&s, "HOLD BTN TO CONTINUE", 50);
-    page.init_display(&mut peripherals.display)?;
-    page.draw_to(&mut peripherals.display)?;
-    peripherals.display.flush()?;
-    manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+    if let Some((state, draw)) = resumable.single_page_with_offset(0) {
+        let s = alloc::format!("Display\nAddress #{}?", index);
+        let mut page = SummaryPage::new_with_threshold(&s, "HOLD BTN TO CONTINUE", 50);
+        page.init_display(&mut peripherals.display)?;
+        page.draw_to(&mut peripherals.display)?;
+        if draw {
+            peripherals.display.flush()?;
+        }
+        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+    }
 
     let addr = Rc::get_mut(wallet)
         .unwrap()
         .get_address(bdk::wallet::AddressIndex::Peek(index));
     let addr = addr.to_string();
 
-    let message = alloc::format!("Address #{}", index);
-    let mut page = ShowScrollingAddressPage::new(&addr, &message, "HOLD BTN TO EXIT");
-    page.init_display(&mut peripherals.display)?;
-    page.draw_to(&mut peripherals.display)?;
-    peripherals.display.flush()?;
-    manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+    if let Some((state, draw)) = resumable.single_page_with_offset(1) {
+        let message = alloc::format!("Address #{}", index);
+        let mut page = ShowScrollingAddressPage::new(&addr, &message, "HOLD BTN TO EXIT");
+        page.init_display(&mut peripherals.display)?;
+        page.draw_to(&mut peripherals.display)?;
+        if draw {
+            peripherals.display.flush()?;
+        }
+        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+    }
 
     peripherals
         .nfc
@@ -305,25 +357,33 @@ pub async fn handle_display_address_request(
 
 pub async fn handle_public_descriptor_request(
     wallet: &mut Rc<PortalWallet>,
+    resumable: checkpoint::Resumable,
+    is_fast_boot: bool,
     mut events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
 ) -> Result<CurrentState, Error> {
     log::info!("handle_public_descriptor_request");
 
-    peripherals
-        .nfc
-        .send(model::Reply::DelayedReply)
-        .await
-        .unwrap();
-
+    let mut checkpoint = checkpoint::Checkpoint::new_with_key(checkpoint::CheckpointVariant::PublicDescriptor, None, Some(resumable), checkpoint::Checkpoint::gen_key(&mut peripherals.rng));
+    if !is_fast_boot {
+        peripherals
+            .nfc
+            .send(model::Reply::DelayedReply)
+            .await
+            .unwrap();
+    }
+ 
     peripherals.tsc_enabled.enable();
 
-    let mut page = SummaryPage::new("Allow watch\nonly access?", "HOLD BTN TO EXPORT DESC");
-    page.init_display(&mut peripherals.display)?;
-    page.draw_to(&mut peripherals.display)?;
-    peripherals.display.flush()?;
-
-    manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+    if let Some((state, draw)) = resumable.single_page_with_offset(0) {
+        let mut page = SummaryPage::new("Allow watch\nonly access?", "HOLD BTN TO EXPORT DESC");
+        page.init_display(&mut peripherals.display)?;
+        page.draw_to(&mut peripherals.display)?;
+        if draw {
+            peripherals.display.flush()?;
+        }
+        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+    }
 
     let descriptor = wallet
         .public_descriptor(bdk::KeychainKind::External)
@@ -352,30 +412,43 @@ pub async fn handle_public_descriptor_request(
 pub async fn handle_get_xpub_request(
     wallet: &mut Rc<PortalWallet>,
     derivation_path: bip32::DerivationPath,
+    resumable: checkpoint::Resumable,
+    is_fast_boot: bool,
+    encryption_key: [u8; 24],
     mut events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
 ) -> Result<CurrentState, Error> {
     log::info!("handle_get_xpub_request");
 
-    peripherals
-        .nfc
-        .send(model::Reply::DelayedReply)
-        .await
-        .unwrap();
+    let checkpoint_state = minicbor::to_vec(SerializedDerivationPath::from(derivation_path.clone())).expect("Serialization workds");
+    let mut checkpoint = checkpoint::Checkpoint::new_with_key(checkpoint::CheckpointVariant::GetXpub, Some(checkpoint_state), Some(resumable), encryption_key.clone());
+    if !is_fast_boot {
+        // Commit fully to flash only once at the start
+        checkpoint.commit(peripherals)?;
 
+        peripherals
+            .nfc
+            .send(model::Reply::DelayedReply)
+            .await
+            .unwrap();
+    }
     peripherals.tsc_enabled.enable();
 
-    let display_path = derivation_path.to_string();
-    let mut page = GenericTwoLinePage::new(
-        "Export public key?",
-        &display_path,
-        "HOLD BTN TO CONFIRM",
-        100,
-    );
-    page.init_display(&mut peripherals.display)?;
-    page.draw_to(&mut peripherals.display)?;
-    peripherals.display.flush()?;
-    manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+    if let Some((state, draw)) = resumable.single_page_with_offset(0) {
+        let display_path = derivation_path.to_string();
+        let mut page = GenericTwoLinePage::new(
+            "Export public key?",
+            &display_path,
+            "HOLD BTN TO CONFIRM",
+            100,
+        );
+        page.init_display(&mut peripherals.display)?;
+        page.draw_to(&mut peripherals.display)?;
+        if draw {
+            peripherals.display.flush()?;
+        }
+        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+    }
 
     let derived = wallet
         .xprv
@@ -417,6 +490,9 @@ pub async fn handle_set_descriptor_request(
     variant: SetDescriptorVariant,
     script_type: ScriptType,
     bsms: Option<model::BsmsRound2>,
+    resumable: checkpoint::Resumable,
+    is_fast_boot: bool,
+    encryption_key: [u8; 24],
     mut events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
 ) -> Result<CurrentState, Error> {
@@ -463,11 +539,11 @@ pub async fn handle_set_descriptor_request(
 
     log::info!("handle_set_descriptor_request");
 
-    peripherals
-        .nfc
-        .send(model::Reply::DelayedReply)
-        .await
-        .unwrap();
+    let checkpoint_state = minicbor::to_vec(checkpoint::SetDescriptorState {
+        variant: variant.clone(),
+        script_type: script_type.clone(),
+        bsms: bsms.clone(),
+    }).expect("Serialization works");
 
     let checks_result = (|| -> Result<_, String> {
         let variant = match variant {
@@ -547,66 +623,101 @@ pub async fn handle_set_descriptor_request(
     };
 
     peripherals.tsc_enabled.enable();
+    let mut checkpoint = checkpoint::Checkpoint::new_with_key(checkpoint::CheckpointVariant::SetDescriptor, Some(checkpoint_state), Some(resumable), encryption_key.clone());
+    if !is_fast_boot {
+        // Commit fully to flash only once at the start
+        checkpoint.commit(peripherals)?;
 
-    let mut page = GenericTwoLinePage::new(
-        "Wallet policy",
-        new_wallet.config.secret.descriptor.variant.variant_name(),
-        "HOLD BTN FOR NEXT PAGE",
-        50,
-    );
-    page.init_display(&mut peripherals.display)?;
-    page.draw_to(&mut peripherals.display)?;
-    peripherals.display.flush()?;
-    manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+        // Also send the `DelayedReply` message if this is not a resumed state
+        peripherals
+            .nfc
+            .send(model::Reply::DelayedReply)
+            .await
+            .unwrap();
+    }
+    let mut page_counter = 0;
 
-    let mut page = GenericTwoLinePage::new(
-        "Address type",
-        new_wallet
-            .config
-            .secret
-            .descriptor
-            .script_type
-            .display_name(),
-        "HOLD BTN FOR NEXT PAGE",
-        50,
-    );
-    page.init_display(&mut peripherals.display)?;
-    page.draw_to(&mut peripherals.display)?;
-    peripherals.display.flush()?;
-    manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+    if let Some((state, draw)) = resumable.single_page_with_offset(page_counter) {
+        let mut page = GenericTwoLinePage::new(
+            "Wallet policy",
+            new_wallet.config.secret.descriptor.variant.variant_name(),
+            "HOLD BTN FOR NEXT PAGE",
+            50,
+        );
+        page.init_display(&mut peripherals.display)?;
+        page.draw_to(&mut peripherals.display)?;
+        if draw {
+            peripherals.display.flush()?;
+        }
+
+        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+    }
+    page_counter += 1;
+
+    if let Some((state, draw)) = resumable.single_page_with_offset(page_counter) {
+        let mut page = GenericTwoLinePage::new(
+            "Address type",
+            new_wallet
+                .config
+                .secret
+                .descriptor
+                .script_type
+                .display_name(),
+            "HOLD BTN FOR NEXT PAGE",
+            50,
+        );
+        page.init_display(&mut peripherals.display)?;
+        page.draw_to(&mut peripherals.display)?;
+        if draw {
+            peripherals.display.flush()?;
+        }
+        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+    }
+    page_counter += 1;
 
     match &new_wallet.config.secret.descriptor.variant {
         DescriptorVariant::SingleSig(path) => {
             let path_display =
                 <SerializedDerivationPath as Into<bip32::DerivationPath>>::into(path.clone())
                     .to_string();
-            let mut page = GenericTwoLinePage::new(
-                "Key derivation",
-                &path_display,
-                "HOLD BTN FOR NEXT PAGE",
-                50,
-            );
-            page.init_display(&mut peripherals.display)?;
-            page.draw_to(&mut peripherals.display)?;
-            peripherals.display.flush()?;
-            manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+
+            if let Some((state, draw)) = resumable.single_page_with_offset(page_counter) {
+                let mut page = GenericTwoLinePage::new(
+                    "Key derivation",
+                    &path_display,
+                    "HOLD BTN FOR NEXT PAGE",
+                    50,
+                );
+                page.init_display(&mut peripherals.display)?;
+                page.draw_to(&mut peripherals.display)?;
+                if draw {
+                    peripherals.display.flush()?;
+                }
+                manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+            }
+            page_counter += 1;
         }
         DescriptorVariant::MultiSig {
             threshold, keys, ..
         } => {
-            let threshold_display = alloc::format!("{} of {}", threshold, keys.len());
-            let mut page = GenericTwoLinePage::new(
-                "Threshold",
-                &threshold_display,
-                "HOLD BTN FOR NEXT PAGE",
-                50,
-            );
-            page.init_display(&mut peripherals.display)?;
-            page.draw_to(&mut peripherals.display)?;
-            peripherals.display.flush()?;
-            manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+            if let Some((state, draw)) = resumable.single_page_with_offset(page_counter) {
+                let threshold_display = alloc::format!("{} of {}", threshold, keys.len());
+                let mut page = GenericTwoLinePage::new(
+                    "Threshold",
+                    &threshold_display,
+                    "HOLD BTN FOR NEXT PAGE",
+                    50,
+                );
+                page.init_display(&mut peripherals.display)?;
+                page.draw_to(&mut peripherals.display)?;
+                if draw {
+                    peripherals.display.flush()?;
+                }
+                manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+            }
+            page_counter += 1;
 
-            for (i, key) in keys.iter().enumerate() {
+            for ((i, key), state, draw) in resumable.wrap_iter_with_offset(page_counter, keys.iter().enumerate()) {
                 let key_name = alloc::format!("Key #{}", i + 1);
 
                 let second_line = match key {
@@ -638,37 +749,48 @@ pub async fn handle_set_descriptor_request(
                     GenericTwoLinePage::new(&key_name, &second_line, "HOLD BTN FOR NEXT PAGE", 50);
                 page.init_display(&mut peripherals.display)?;
                 page.draw_to(&mut peripherals.display)?;
-                peripherals.display.flush()?;
-                manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+                if draw {
+                    peripherals.display.flush()?;
+                }
+                manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
             }
+            page_counter += keys.len();
         }
     }
 
     log::debug!("First address: {}", first_address);
-    let address_str = first_address.to_string();
-    let mut page = ShowScrollingAddressPage::new(
-        &address_str,
-        "Confirm first address",
-        "HOLD BTN FOR NEXT PAGE",
-    );
-    page.init_display(&mut peripherals.display)?;
-    page.draw_to(&mut peripherals.display)?;
-    peripherals.display.flush()?;
-    manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+    if let Some((state, draw)) = resumable.single_page_with_offset(page_counter) {
+        let address_str = first_address.to_string();
+        let mut page = ShowScrollingAddressPage::new(
+            &address_str,
+            "Confirm first address",
+            "HOLD BTN FOR NEXT PAGE",
+        );
+        page.init_display(&mut peripherals.display)?;
+        page.draw_to(&mut peripherals.display)?;
+        if draw {
+            peripherals.display.flush()?;
+        }
+        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+    }
+    page_counter += 1;
 
-    let mut page = SummaryPage::new("Save new\nconfiguration?", "HOLD BTN TO APPLY CHANGES");
-    page.init_display(&mut peripherals.display)?;
-    page.draw_to(&mut peripherals.display)?;
-    peripherals.display.flush()?;
-    manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+    if let Some((state, draw)) = resumable.single_page_with_offset(page_counter) {
+        let mut page = SummaryPage::new("Save new\nconfiguration?", "HOLD BTN TO APPLY CHANGES");
+        page.init_display(&mut peripherals.display)?;
+        page.draw_to(&mut peripherals.display)?;
+        if draw {
+            peripherals.display.flush()?;
+        }
+        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+    }
 
     let encrypted_config = new_wallet.config.clone().lock();
     // log::debug!("Saving new config: {:?}", encrypted_config);
     crate::config::write_config(
         &mut peripherals.flash,
         &model::Config::Initialized(encrypted_config),
-    )
-    .await?;
+    )?;
     log::debug!("Config saved!");
 
     peripherals.nfc.send(model::Reply::Ok).await.unwrap();
