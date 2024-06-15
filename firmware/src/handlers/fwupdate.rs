@@ -483,7 +483,7 @@ pub async fn handle_begin_fw_update(
         .await
         .unwrap();
 
-    let mut page = SummaryPage::new("Update FW?", "HOLD BTN TO BEGIN");
+    let mut page = SummaryPage::new_with_threshold("Update FW?", "HOLD BTN TO BEGIN", 70);
     page.init_display(&mut peripherals.display)?;
     page.draw_to(&mut peripherals.display)?;
     peripherals.display.flush()?;

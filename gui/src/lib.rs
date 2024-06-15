@@ -554,7 +554,7 @@ impl_wrapper_page!(
 impl<'s> TxOutputPage<'s> {
     pub fn new(address: &'s Address, value: Amount) -> Self {
         TxOutputPage(ConfirmBarPage::new(
-            100,
+            50,
             TxOutputPageContent {
                 address,
                 value,
@@ -741,7 +741,7 @@ impl_wrapper_page!(TxSummaryPage, ConfirmBarPage<'static, TxSummaryPageContent>)
 impl TxSummaryPage {
     pub fn new(fees: Amount) -> Self {
         TxSummaryPage(ConfirmBarPage::new_default_bar(
-            100,
+            80,
             TxSummaryPageContent { fees },
             "HOLD BTN TO SIGN TX",
             "KEEP HOLDING...",
