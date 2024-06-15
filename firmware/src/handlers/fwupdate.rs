@@ -45,7 +45,7 @@ const FIRMWARE_SIGNING_KEY: &'static str =
 const FIRMWARE_SIGNING_KEY: &'static str =
     "1608bd04cf3212070b3de57f4a2ad8e5108a103af037f878ec75f4a2068de610";
 
-const CHECKPOINT_PAGE_INTERVAL: usize = 8;
+const CHECKPOINT_PAGE_INTERVAL: usize = 4;
 
 // #[cfg_attr(feature = "emulator", allow(dead_code))]
 // const FLASH_OPTKEY1: u32 = 0x0819_2A3B;
