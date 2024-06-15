@@ -299,7 +299,7 @@ pub enum Config {
     Unverified(#[cbor(n(0))] UnverifiedConfig),
 }
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct UnverifiedConfig {
     #[cbor(n(0))]
     pub entropy: Entropy,
@@ -310,6 +310,8 @@ pub struct UnverifiedConfig {
     pub pair_code: Option<String>,
     #[cbor(n(3))]
     pub descriptor: WalletDescriptor,
+    #[cbor(n(4))]
+    pub page: usize,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]

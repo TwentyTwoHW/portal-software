@@ -422,7 +422,7 @@ pub async fn handle_locked(
 }
 
 pub async fn display_mnemonic(
-    config: UnverifiedConfig,
+    mut config: UnverifiedConfig,
     mut events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
 ) -> Result<CurrentState, Error> {
@@ -430,7 +430,7 @@ pub async fn display_mnemonic(
 
     let mnemonic = Mnemonic::from_entropy(&config.entropy.bytes).map_err(map_err_config)?;
     let mnemonic_str = mnemonic.word_iter().collect::<alloc::vec::Vec<_>>();
-    for (chunk_index, words) in mnemonic_str.chunks(2).enumerate() {
+    for (chunk_index, words) in mnemonic_str.chunks(2).enumerate().skip(config.page) {
         let mut page = MnemonicPage::new((chunk_index * 2) as u8, &words);
         page.init_display(&mut peripherals.display)?;
         page.draw_to(&mut peripherals.display)?;
@@ -438,7 +438,8 @@ pub async fn display_mnemonic(
 
         manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
 
-        // TODO: store checkpoint?
+        config.page = chunk_index + 1;
+        save_unverified_config(config.clone(), peripherals).await?;
     }
 
     if let Some(pair_code) = &config.pair_code {
@@ -512,6 +513,7 @@ pub async fn handle_generate_seed(
         network,
         pair_code: password.map(ToString::to_string),
         descriptor,
+        page: 0,
     };
     let unverified_config = save_unverified_config(unverified_config, peripherals).await?;
     display_mnemonic(unverified_config, events, peripherals).await
@@ -542,6 +544,7 @@ pub async fn handle_import_seed(
         network,
         pair_code: password.map(ToString::to_string),
         descriptor,
+        page: 0,
     };
     let unverified_config = save_unverified_config(unverified_config, peripherals).await?;
     display_mnemonic(unverified_config, events, peripherals).await
