@@ -724,10 +724,6 @@ impl InnerManager {
                     &self.debug_in,
                 ).fuse() => {
                     log::debug!("inner_future exited with: {:?}", result);
-
-                    if result.is_err() {
-                        break;
-                    }
                 }
             }
         }
