@@ -77,6 +77,7 @@ async fn test_load_config(mut tester: Tester) -> Result<(), crate::Error> {
             initialized: model::InitializationStatus::Initialized {
                 unlocked: true,
                 network: model::bitcoin::Network::Signet,
+                fingerprint: Some([115, 197, 218, 10]),
             },
             firmware_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         }))
@@ -94,6 +95,7 @@ async fn test_locked(mut tester: Tester) -> Result<(), crate::Error> {
             initialized: model::InitializationStatus::Initialized {
                 unlocked: false,
                 network: model::bitcoin::Network::Signet,
+                fingerprint: None,
             },
             firmware_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         }))
@@ -115,6 +117,7 @@ async fn test_locked(mut tester: Tester) -> Result<(), crate::Error> {
             initialized: model::InitializationStatus::Initialized {
                 unlocked: true,
                 network: model::bitcoin::Network::Signet,
+                fingerprint: Some([115, 197, 218, 10]),
             },
             firmware_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         }))
@@ -262,6 +265,7 @@ async fn test_unverified(mut tester: Tester) -> Result<(), crate::Error> {
             initialized: model::InitializationStatus::Initialized {
                 unlocked: true,
                 network: model::bitcoin::Network::Signet,
+                fingerprint: Some([115, 197, 218, 10]),
             },
             firmware_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         }))

@@ -56,7 +56,10 @@ const FLASH_SIZE: u32 = 510 * 2048;
 const FLASH_END: u32 = FLASH_BASE + FLASH_SIZE;
 
 #[cfg(feature = "bindings")]
-pub use model::bitcoin::{util::bip32::DerivationPath, Address, Network};
+pub use model::bitcoin::{
+    util::bip32::{DerivationPath, Fingerprint},
+    Address, Network,
+};
 
 #[cfg_attr(feature = "bindings", derive(uniffi::Object))]
 pub struct PortalSdk {
@@ -194,13 +197,17 @@ impl PortalSdk {
         let device_info = send_with_retry!(self.requests, Request::GetInfo, Ok(Reply::Info(device_info)) => break Ok(device_info))?;
         match device_info.initialized {
             InitializationStatus::Initialized {
-                network, unlocked, ..
+                network,
+                unlocked,
+                fingerprint,
+                ..
             } => Ok(CardStatus {
                 initialized: true,
                 unverified: None,
                 unlocked,
                 network: Some(network),
                 version: device_info.firmware_version,
+                fingerprint: fingerprint.map(|bytes| bip32::Fingerprint::from(bytes.as_slice())),
             }),
             InitializationStatus::Uninitialized => Ok(CardStatus {
                 initialized: false,
@@ -208,6 +215,7 @@ impl PortalSdk {
                 unlocked: true,
                 network: None,
                 version: device_info.firmware_version,
+                fingerprint: None,
             }),
             InitializationStatus::Unverified { with_code, network } => Ok(CardStatus {
                 initialized: false,
@@ -215,6 +223,7 @@ impl PortalSdk {
                 unlocked: true,
                 network: Some(network),
                 version: device_info.firmware_version,
+                fingerprint: None,
             }),
         }
     }
@@ -738,6 +747,10 @@ pub struct CardStatus {
     pub unlocked: bool,
     pub network: Option<model::bitcoin::Network>,
     pub version: Option<String>,
+    /// Added in version 0.3.0 of the firmware
+    ///
+    /// Only available when the device is initialized and unlocked
+    pub fingerprint: Option<bip32::Fingerprint>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -862,6 +875,7 @@ mod ffi {
     uniffi::custom_type!(Network, String);
     uniffi::custom_type!(Address, String);
     uniffi::custom_type!(DerivationPath, String);
+    uniffi::custom_type!(Fingerprint, String);
 }
 
 #[cfg(feature = "bindings")]

@@ -803,6 +803,9 @@ pub enum InitializationStatus {
         #[cbor(with = "cbor_bitcoin_network")]
         #[cbor(n(1))]
         network: bitcoin::Network,
+        /// Since v0.3.0
+        #[cbor(n(2))]
+        fingerprint: Option<[u8; 4]>,
     },
     #[cbor(n(2))]
     Unverified {
@@ -827,6 +830,7 @@ impl DeviceInfo {
             initialized: InitializationStatus::Initialized {
                 unlocked: false,
                 network,
+                fingerprint: None,
             },
             firmware_version: Some(version.to_string()),
         }
@@ -843,11 +847,16 @@ impl DeviceInfo {
         }
     }
 
-    pub fn new_unlocked_initialized(network: bitcoin::Network, version: &'static str) -> Self {
+    pub fn new_unlocked_initialized(
+        network: bitcoin::Network,
+        fingerprint: [u8; 4],
+        version: &'static str,
+    ) -> Self {
         DeviceInfo {
             initialized: InitializationStatus::Initialized {
                 unlocked: true,
                 network,
+                fingerprint: Some(fingerprint),
             },
             firmware_version: Some(version.to_string()),
         }
