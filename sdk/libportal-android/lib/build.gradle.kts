@@ -62,7 +62,7 @@ afterEvaluate {
     publishing {
         publications {
             create<MavenPublication>("maven") {
-                groupId = "xyz.twenty_two"
+                groupId = "xyz.twenty-two"
                 artifactId = "libportal-android"
                 version = libraryVersion
 
@@ -93,10 +93,7 @@ afterEvaluate {
 }
 
 signing {
-    val signingKeyId: String? by project
-    val signingKey: String? by project
-    val signingPassword: String? by project
-    useInMemoryPgpKeys(signingKeyId, signingKey, signingPassword)
+    useGpgCmd()
     sign(publishing.publications)
 }
 
