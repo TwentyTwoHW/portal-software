@@ -829,7 +829,7 @@ impl From<FutureError> for SdkError {
         match e {
             FutureError::ChannelError => SdkError::ChannelError,
             FutureError::Timeout => SdkError::Timeout,
-            FutureError::Message(_) => SdkError::CommunicationError,
+            FutureError::Message => SdkError::CommunicationError,
             FutureError::Canceled => SdkError::CommunicationError,
         }
     }

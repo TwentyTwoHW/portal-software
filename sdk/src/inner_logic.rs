@@ -327,14 +327,14 @@ impl<F: FnOnce()> Drop for OnDrop<F> {
 
 #[derive(Debug, Clone)]
 pub(crate) enum FutureError {
-    Message(model::MessageError),
+    Message,
     ChannelError,
     Timeout,
     Canceled,
 }
 impl From<model::MessageError> for FutureError {
-    fn from(value: model::MessageError) -> Self {
-        FutureError::Message(value)
+    fn from(_: model::MessageError) -> Self {
+        FutureError::Message
     }
 }
 impl From<async_std::channel::RecvError> for FutureError {
