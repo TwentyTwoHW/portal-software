@@ -28,13 +28,22 @@ lipo ../target/aarch64-apple-ios-sim/release/libportal.a ../target/x86_64-apple-
 
 popd
 
+rm -rf ./portalFFI.xcframework
+rm -rf ../../target/include
+
+mkdir -pv ../../target/include
+cp Sources/LibPortal/portalFFI.h ../../target/include/
+cp Sources/LibPortal/portalFFI.modulemap ../../target/include/module.modulemap
+
+# create new xcframework directory from bdk-ffi static libs and headers
+xcodebuild -create-xcframework \
+    -library "../../target/aarch64-apple-ios/release/libportal.a" \
+    -headers "../../target/include" \
+    -library "../../target/lipo-ios-sim/release/libportal.a" \
+    -headers "../../target/include" \
+    -output "./portalFFI.xcframework"
+
 mv Sources/LibPortal/portal.swift Sources/LibPortal/LibPortal.swift
-cp Sources/LibPortal/portalFFI.h portalFFI.xcframework/ios-arm64/portalFFI.framework/Headers
-cp Sources/LibPortal/portalFFI.h portalFFI.xcframework/ios-arm64_x86_64-simulator/portalFFI.framework/Headers
-cp ../../target/aarch64-apple-ios/release/libportal.a portalFFI.xcframework/ios-arm64/portalFFI.framework/portalFFI
-cp ../../target/lipo-ios-sim/release/libportal.a portalFFI.xcframework/ios-arm64_x86_64-simulator/portalFFI.framework/portalFFI
-rm Sources/LibPortal/portalFFI.h
-rm Sources/LibPortal/portalFFI.modulemap
 
 PACKAGE=${PACKAGE-'0'}
 if [ "$PACKAGE" -eq '1' ]; then
