@@ -23,7 +23,8 @@ use minicbor::{Encode, Decode};
 
 use model::{ByteArray, EncryptionKey, SerializedDerivationPath};
 
-use crate::{config::read_config, hw::{read_flash, write_flash, FlashError, PAGE_SIZE}, CurrentState};
+use crate::{config::read_config, hw::{read_flash, write_flash, FlashError}, CurrentState};
+use crate::hw_common::PAGE_SIZE;
 
 const CHECKPOINT_PAGE: usize = 254;
 

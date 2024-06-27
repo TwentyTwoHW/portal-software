@@ -41,6 +41,7 @@ pub type NfcInterrupt = hw_common::ChannelSender<()>;
 pub struct EmulatorChannels {
     pub tsc: hw_common::ChannelSender<bool>,
     pub flash: hw_common::ChannelSender<Vec<u8>>,
+    pub rtc: hw_common::ChannelSender<Vec<u8>>,
     pub emulated_nt3h: EmulatedNT3H,
 }
 
@@ -56,6 +57,8 @@ pub fn init_peripherals(
         Tsc,
         rand_chacha::ChaCha20Rng,
         Flash,
+        Rtc,
+        bool,
     ),
     crate::Error,
 > {
@@ -94,6 +97,8 @@ pub fn init_peripherals(
         Tsc::new(),
         rng,
         Flash::new(),
+        Rtc::new(),
+        false, // TODO!!
     ))
 }
 
@@ -276,6 +281,9 @@ impl EmulatedNT3H {
             self.status = self.status.clone().with_SRAM_RF_READY(true);
         }
 
+        // Signal whether the buffer is still full
+        self.status = self.status.clone().with_SRAM_I2C_READY(self.incoming.is_full());
+
         let reply = match data[0] {
             // Read session reg
             0x30 if data[1] == 0xED => {
@@ -394,21 +402,23 @@ impl Flash {
         *self.channel.borrow_mut() = Some(channel);
     }
 
-    pub async fn read(&self) -> Vec<u8> {
-        let msg = emu_model::CardMessage::ReadFlash;
+    pub fn read(&self, page: u16) -> Vec<u8> {
+        let msg = emu_model::CardMessage::ReadFlash(page);
         super::write_serial(msg.write_to());
 
-        self.channel
-            .borrow_mut()
-            .as_mut()
-            .expect("The channel should be set during initialization")
-            .recv()
-            .await
-            .expect("Channel is always alive")
+        loop {
+            if let Ok(data) = self.channel
+                .borrow_mut()
+                .as_mut()
+                .expect("The channel should be set during initialization")
+                .try_recv() {
+                break data;
+            }
+        }
     }
 
-    pub fn write(&self, data: &[u8]) {
-        let msg = emu_model::CardMessage::WriteFlash(data.to_vec());
+    pub fn write(&self, page: u16, data: &[u8]) {
+        let msg = emu_model::CardMessage::WriteFlash(page, data.to_vec());
         super::write_serial(msg.write_to());
     }
 }
@@ -433,4 +443,73 @@ pub fn enable_debug_during_sleep(_: &mut hal::pac::Peripherals) {}
 #[derive(Debug)]
 pub enum FlashError {
     CorruptedData
+}
+impl From<minicbor::decode::Error> for FlashError {
+    fn from(_: minicbor::decode::Error) -> Self {
+        FlashError::CorruptedData
+    }
+}
+
+pub fn read_flash<'b>(flash: &mut Flash, page: usize, buf: &'b mut [u8; 2048]) -> Result<&'b [u8], FlashError> {
+    let data = flash.read(page as u16);
+    let len = core::cmp::min(u16::from_be_bytes(data[..2].try_into().unwrap()) as usize, crate::hw_common::PAGE_SIZE - 2);
+    buf[..len].copy_from_slice(&data[2..2+len]);
+
+    Ok(buf.as_slice())
+}
+
+pub fn write_flash(flash: &mut Flash, page: usize, serialized: &[u8]) -> Result<(), FlashError> {
+    let mut data = alloc::vec![];
+    data.extend(u16::to_be_bytes(serialized.len() as u16));
+    data.extend(serialized);
+    flash.write(page as u16, &data);
+    Ok(())
+}
+
+pub struct Rtc {
+    channel: RefCell<Option<hw_common::ChannelReceiver<Vec<u8>>>>,
+    registers: RefCell<([u32; 32], bool)>
+}
+
+impl Rtc {
+    fn new() -> Self {
+        Rtc {
+            channel: RefCell::new(None),
+            registers: RefCell::new(([0; 32], true)),
+        }
+    }
+
+    pub fn set_channel(&self, channel: hw_common::ChannelReceiver<Vec<u8>>) {
+        *self.channel.borrow_mut() = Some(channel);
+    }
+
+    pub fn read_backup_register(&self, register: usize) -> Option<u32> {
+        let mut borrow = self.registers.borrow_mut();
+
+        if borrow.1 {
+            let msg = emu_model::CardMessage::ReadRtcRegister(register as u8);
+            super::write_serial(msg.write_to());
+
+            loop {
+                if let Ok(data) = self.channel
+                    .borrow_mut()
+                    .as_mut()
+                    .expect("The channel should be set during initialization")
+                    .try_recv() {
+                    let u32s = data.chunks_exact(4).map(|v| u32::from_be_bytes(v.try_into().unwrap())).collect::<alloc::vec::Vec<_>>().try_into().unwrap();
+                    borrow.0 = u32s;
+                    borrow.1 = false;
+                    break;
+                }
+            }
+        }
+
+        Some(borrow.0[register])
+    }
+    pub fn write_backup_register(&self, register: usize, value: u32) {
+        self.registers.borrow_mut().1 = true;
+
+        let msg = emu_model::CardMessage::WriteRtcRegister(register as u8, value);
+        super::write_serial(msg.write_to());
+    }
 }

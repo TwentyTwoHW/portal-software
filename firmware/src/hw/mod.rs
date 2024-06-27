@@ -37,9 +37,6 @@ pub type FloatingInput = gpio::Input<gpio::Floating>;
 
 pub use rtc::Rtc;
 
-pub const PAGE_SIZE: usize = 2048;
-pub const MAX_FW_PAGES: usize = 508;
-
 pub fn enable_debug_during_sleep(dp: &mut stm32::Peripherals) {
     // Allow debugging during sleep
     dp.DBGMCU.cr.modify(|_, w| {
@@ -276,7 +273,7 @@ pub fn read_flash<'b>(flash: &mut Flash, page: usize, buf: &'b mut [u8; 2048]) -
 
     prog.read(page_to_read, buf);
     let len = u16::from_be_bytes(buf[..2].try_into().unwrap()) as usize;
-    if len >= PAGE_SIZE - 2 {
+    if len >= super::hw_common::PAGE_SIZE - 2 {
         return Err(FlashError::CorruptedData);
     }
 
@@ -288,7 +285,7 @@ pub fn write_flash(flash: &mut Flash, page: usize, serialized: &[u8]) -> Result<
 
     let mut prog = flash.keyr.unlock_flash(&mut flash.sr, &mut flash.cr)?;
 
-    if serialized.len() > PAGE_SIZE - 2 {
+    if serialized.len() > super::hw_common::PAGE_SIZE - 2 {
         return Err(FlashError::CorruptedData);
     }
 
@@ -296,7 +293,7 @@ pub fn write_flash(flash: &mut Flash, page: usize, serialized: &[u8]) -> Result<
     let len = (serialized.len() as u16).to_be_bytes();
     data.extend_from_slice(&len);
     data.extend(serialized);
-    data.resize(PAGE_SIZE, 0x00);
+    data.resize(super::hw_common::PAGE_SIZE, 0x00);
 
     let page = flash::FlashPage(page);
     prog.erase_page(page)?;

@@ -93,7 +93,7 @@ pub enum TestAction {
     Input(bool),
     WaitTicks(usize),
     WipeFlash,
-    Reset,
+    Reset(bool),
 }
 
 #[derive(Debug, Deserialize, Serialize)]

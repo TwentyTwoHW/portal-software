@@ -24,7 +24,6 @@ use cortex_m::interrupt::{free, Mutex};
 use stm32f4xx_hal::prelude::*;
 use stm32f4xx_hal::serial;
 
-pub mod config;
 pub mod hw;
 
 static SERIAL: Mutex<RefCell<Option<serial::Serial<hal::pac::USART1>>>> =
@@ -105,6 +104,7 @@ pub enum PeripheralIncomingMsg {
     FlashContent,
     Reset,
     Entropy,
+    RtcRegister,
 }
 
 impl PeripheralIncomingMsg {
@@ -115,6 +115,7 @@ impl PeripheralIncomingMsg {
             0x03 => Some(PeripheralIncomingMsg::FlashContent),
             0x04 => Some(PeripheralIncomingMsg::Reset),
             0x05 => Some(PeripheralIncomingMsg::Entropy),
+            0x06 => Some(PeripheralIncomingMsg::RtcRegister),
             _ => None,
         }
     }

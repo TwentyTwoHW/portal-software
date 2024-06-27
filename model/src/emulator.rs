@@ -21,11 +21,13 @@ use noise_protocol::CipherState;
 pub enum CardMessage {
     Display(alloc::vec::Vec<u16>),
     Nfc(alloc::vec::Vec<u8>),
-    WriteFlash(alloc::vec::Vec<u8>),
-    ReadFlash,
+    WriteFlash(u16, alloc::vec::Vec<u8>),
+    ReadFlash(u16),
     Tick,
     FinishBoot,
     FlushDisplay,
+    ReadRtcRegister(u8),
+    WriteRtcRegister(u8, u32),
 }
 
 #[cfg(feature = "stm32")]
@@ -50,15 +52,28 @@ impl CardMessage {
                     .chain(reply.into_iter()),
             ),
             CardMessage::Tick => alloc::boxed::Box::new([0x02].into_iter()),
-            CardMessage::WriteFlash(data) => alloc::boxed::Box::new(
+            CardMessage::WriteFlash(page, data) => alloc::boxed::Box::new(
                 [0x03]
                     .into_iter()
-                    .chain(u16::to_be_bytes(data.len() as _).into_iter())
+                    .chain(u16::to_be_bytes(data.len() as u16 + 2).into_iter())
+                    .chain(u16::to_be_bytes(page).into_iter())
                     .chain(data.into_iter()),
             ),
-            CardMessage::ReadFlash => alloc::boxed::Box::new([0x04].into_iter()),
+            CardMessage::ReadFlash(page) => alloc::boxed::Box::new(
+                [0x04, 0x00, 0x02]
+                    .into_iter()
+                    .chain(u16::to_be_bytes(page).into_iter()),
+            ),
             CardMessage::FinishBoot => alloc::boxed::Box::new([0x05].into_iter()),
             CardMessage::FlushDisplay => alloc::boxed::Box::new([0x06].into_iter()),
+            CardMessage::ReadRtcRegister(register) => {
+                alloc::boxed::Box::new([0x07, 0x00, 0x01, register].into_iter())
+            }
+            CardMessage::WriteRtcRegister(register, value) => alloc::boxed::Box::new(
+                [0x08, 0x00, 0x05, register]
+                    .into_iter()
+                    .chain(u32::to_be_bytes(value)),
+            ),
         }
     }
 }
@@ -70,6 +85,7 @@ pub enum EmulatorMessage {
     FlashContent(alloc::vec::Vec<u8>),
     Reset,
     Entropy([u8; 32]),
+    Rtc([u32; 32]),
 }
 
 impl EmulatorMessage {
@@ -106,6 +122,11 @@ impl EmulatorMessage {
                 v.extend_from_slice(data);
                 v
             }
+            EmulatorMessage::Rtc(value) => {
+                let mut v = alloc::vec![0x06, 0x00, 0x80];
+                v.extend(value.iter().map(|v| v.to_be_bytes()).flatten());
+                v
+            }
         }
     }
 
@@ -119,6 +140,7 @@ impl EmulatorMessage {
             EmulatorMessage::Nfc(bytes) => alloc::format!("Nfc({:02X?})", bytes),
             EmulatorMessage::FlashContent(_) => "FlashContent(...)".to_string(),
             EmulatorMessage::Entropy(data) => alloc::format!("Entropy({:02X?})", data),
+            EmulatorMessage::Rtc(_) => alloc::format!("Rtc"),
         }
     }
 }

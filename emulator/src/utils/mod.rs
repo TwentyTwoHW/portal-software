@@ -108,8 +108,8 @@ async fn decode_card_message<R: AsyncBufReadExt + Unpin>(
 ) -> Result<CardMessage, crate::Error> {
     let ty = reader.read_u8().await?;
     let has_len = match ty {
-        0x00 | 0x01 | 0x03 => true,
-        0x02 | 0x04 | 0x05 | 0x06 => false,
+        0x00 | 0x01 | 0x03 | 0x04 | 0x07 | 0x08 => true,
+        0x02 | 0x05 | 0x06 => false,
         v => return Err(format!("Invalid CardMessage type {}", v).into()),
     };
 
@@ -131,10 +131,22 @@ async fn decode_card_message<R: AsyncBufReadExt + Unpin>(
         )),
         0x01 => Ok(CardMessage::Nfc(data)),
         0x02 => Ok(CardMessage::Tick),
-        0x03 => Ok(CardMessage::WriteFlash(data)),
-        0x04 => Ok(CardMessage::ReadFlash),
+        0x03 => {
+            let page = u16::from_be_bytes(data[..2].try_into().unwrap());
+            let data = data[2..].into_iter().copied().collect();
+            Ok(CardMessage::WriteFlash(page, data))
+        }
+        0x04 => {
+            let page = u16::from_be_bytes(data[..2].try_into().unwrap());
+            Ok(CardMessage::ReadFlash(page))
+        }
         0x05 => Ok(CardMessage::FinishBoot),
         0x06 => Ok(CardMessage::FlushDisplay),
+        0x07 => Ok(CardMessage::ReadRtcRegister(data[0])),
+        0x08 => Ok(CardMessage::WriteRtcRegister(
+            data[0],
+            u32::from_be_bytes(data[1..5].try_into().unwrap()),
+        )),
 
         _ => unreachable!(),
     }
@@ -230,6 +242,8 @@ pub async fn get_emulator_instance(
             sdk,
             entropy,
 
+            rtc: [0; 32],
+
             _qemu_handle: None,
         })
     } else {
@@ -283,6 +297,7 @@ pub struct EmulatorInstance {
     pub flash: Box<dyn ReadWrite + Send>,
     pub sdk: Arc<PortalSdk>,
     pub entropy: [u8; 32],
+    pub rtc: [u32; 32],
 
     pub(super) _qemu_handle: Option<Child>,
 }
@@ -309,6 +324,7 @@ impl EmulatorInstance {
         tokio::time::timeout(std::time::Duration::from_secs(2), msgs.finish_boot.recv()).await?;
         // Send new entropy
         card.send(EmulatorMessage::Entropy(entropy)).unwrap();
+        card.send(EmulatorMessage::Rtc([0; 32])).unwrap();
         let sdk = Self::attach_sdk(nfc, card.clone());
 
         Ok(EmulatorInstance {
@@ -319,6 +335,7 @@ impl EmulatorInstance {
             flash,
             sdk,
             entropy,
+            rtc: [0; 32],
             _qemu_handle: Some(_qemu_handle),
         })
     }
@@ -382,6 +399,7 @@ impl EmulatorInstance {
                         }
                         EmulatorMessage::Reset => log::trace!("> Reset"),
                         EmulatorMessage::Entropy(data) => log::trace!("> Entropy({:02X?})", data),
+                        EmulatorMessage::Rtc(_) => log::trace!("> Rtc"),
                     }
 
                     let encoded = msg.encode();

@@ -152,7 +152,10 @@ async fn run_script(
                 crate::link::wipe_flash(&mut emulator.flash, &mut emulator.card).await?;
                 None
             }
-            TestOp::Action(TestAction::Reset) => {
+            TestOp::Action(TestAction::Reset(wipe_registers)) => {
+                if *wipe_registers {
+                    emulator.rtc = [0; 32];
+                }
                 emulator.card.send(EmulatorMessage::Reset)?;
                 None
             }
@@ -355,7 +358,14 @@ impl Tester {
     }
 
     pub async fn reset(&mut self) -> Result<(), crate::Error> {
-        self.op_sender.send(TestAction::Reset.into()).await?;
+        self.op_sender.send(TestAction::Reset(true).into()).await?;
+        self.expect_reply().await?;
+
+        Ok(())
+    }
+
+    pub async fn fast_boot_reset(&mut self) -> Result<(), crate::Error> {
+        self.op_sender.send(TestAction::Reset(false).into()).await?;
         self.expect_reply().await?;
 
         Ok(())

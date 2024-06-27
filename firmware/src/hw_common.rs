@@ -28,6 +28,9 @@ use hal::interrupt;
 pub type ChannelSender<T> = rtic_sync::channel::Sender<'static, T, 1>;
 pub type ChannelReceiver<T> = rtic_sync::channel::Receiver<'static, T, 1>;
 
+pub const PAGE_SIZE: usize = 2048;
+pub const MAX_FW_PAGES: usize = 508;
+
 pub struct NfcChannelsLocal {
     pub outgoing: ChannelReceiver<Reply>,
     pub incoming: ChannelSender<Request>,

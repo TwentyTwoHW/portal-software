@@ -36,12 +36,8 @@ extern crate stm32f4xx_hal as hal;
 #[cfg(feature = "device")]
 extern crate stm32l4xx_hal as hal;
 
-#[cfg(feature = "device")]
 mod config;
-#[cfg(feature = "device")]
 mod checkpoint;
-#[cfg(feature = "emulator")]
-pub use emulator::config;
 #[cfg(feature = "emulator")]
 mod emulator;
 mod error;
@@ -181,7 +177,7 @@ mod app {
         dp.RCC.apb2enr.write(|w| w.syscfgen().set_bit());
 
         #[allow(unused_mut)]
-        let (mut nfc, nfc_interrupt, nfc_finished, display, tsc, mut rng, flash, rtc, fast_boot) =
+        let (mut nfc, nfc_interrupt, nfc_finished, display, tsc, mut rng, flash, rtc, mut fast_boot) =
             hw::init_peripherals(dp, cp).unwrap();
 
         log::debug!("Initialized peripherals");
@@ -196,7 +192,54 @@ mod app {
         let mut noise_rng = rng.clone();
         noise_rng.set_stream(0xFF);
 
-        let mut peripherals = HandlerPeripherals {
+        #[cfg(feature = "emulator")]
+        let emulator_channels = {
+            use crate::hw::EmulatedNT3H;
+            use rand::SeedableRng;
+
+            let (flash_sender, flash_receiver) = rtic_sync::make_channel!(alloc::vec::Vec::<u8>, 1);
+            flash.set_channel(flash_receiver);
+            let (rtc_sender, rtc_receiver) = rtic_sync::make_channel!(alloc::vec::Vec::<u8>, 1);
+            rtc.set_channel(rtc_receiver);
+
+            hw::report_finish_boot();
+
+            let mut entropy = alloc::vec![];
+            let mut found = 0;
+            // A bit hacky but at this point serial interrupts aren't setup yet so we have to wait for the entropy here
+            while found < 2 {
+                match crate::emulator::serial_interrupt() {
+                    None => continue,
+                    Some(val) => {
+                        let data = crate::emulator::read_serial();
+                        if val == crate::emulator::PeripheralIncomingMsg::Entropy {
+                            entropy.extend(&data);
+                            found += 1;
+                        } else if val == crate::emulator::PeripheralIncomingMsg::RtcRegister {
+                            log::debug!("Registers = {:02X?}", &data[..4]);
+                            fast_boot = u32::from_be_bytes(data[..4].try_into().unwrap()) == checkpoint::MAGIC;
+                            found += 1;
+                        }
+                    }
+                }
+            }
+            log::debug!("Seeding rng with {:02X?}", entropy);
+            rng = rand_chacha::ChaCha20Rng::from_seed(entropy.try_into().unwrap());
+
+            if !fast_boot {
+                let msg = model::emulator::CardMessage::WriteRtcRegister(checkpoint::MAGIC_REGISTER as u8, checkpoint::MAGIC);
+                super::write_serial(msg.write_to());
+            }
+
+            hw::EmulatorChannels {
+                tsc: tsc_sender.clone(),
+                emulated_nt3h: EmulatedNT3H::new(nfc_interrupt.clone(), &mut nfc),
+                flash: flash_sender,
+                rtc: rtc_sender,
+            }
+        };
+
+        let peripherals = HandlerPeripherals {
                     display,
                     rng,
                     flash,
@@ -205,46 +248,10 @@ mod app {
                     nfc_finished,
                     tsc_enabled,
                 };
-        let current_state = if fast_boot {
-            checkpoint::Checkpoint::load(&mut peripherals).inspect(|v| log::debug!("Found FB: {:?}", v)).and_then(|checkpoint| checkpoint.into_current_state(&mut peripherals)).unwrap_or(CurrentState::POR)
-        } else {
-            CurrentState::POR
-        };
 
         nfc_read_loop::spawn(noise_rng).unwrap();
         timer_ticking::spawn().unwrap();
         main_task::spawn().unwrap();
-
-        #[cfg(feature = "emulator")]
-        let emulator_channels = {
-            use crate::hw::EmulatedNT3H;
-            use rand::SeedableRng;
-
-            let (flash_sender, flash_receiver) = rtic_sync::make_channel!(alloc::vec::Vec::<u8>, 1);
-            flash.set_channel(flash_receiver);
-
-            hw::report_finish_boot();
-
-            // A bit hacky but at this point serial interrupts aren't setup yet so we have to wait for the entropy here
-            loop {
-                match crate::emulator::serial_interrupt() {
-                    None => continue,
-                    Some(val) => {
-                        assert_eq!(val, crate::emulator::PeripheralIncomingMsg::Entropy);
-                        break;
-                    }
-                }
-            }
-            let entropy = crate::emulator::read_serial();
-            log::debug!("Seeding rng with {:02X?}", entropy);
-            rng = rand_chacha::ChaCha20Rng::from_seed(entropy.try_into().unwrap());
-
-            hw::EmulatorChannels {
-                tsc: tsc_sender.clone(),
-                emulated_nt3h: EmulatedNT3H::new(nfc_interrupt.clone(), &mut nfc),
-                flash: flash_sender,
-            }
-        };
 
         (
             Shared {
@@ -254,7 +261,7 @@ mod app {
                 nfc: (nfc, nfc_local),
                 nfc_interrupt,
                 tsc: (tsc, tsc_sender),
-                current_state,
+                current_state: CurrentState::POR,
                 events: (
                     RefCell::new(nfc_shared.incoming),
                     RefCell::new(tsc_receiver),
@@ -301,6 +308,12 @@ mod app {
 
         pin_mut!(stream);
         let fast_boot = cx.shared.fast_boot.lock(|v| *v);
+
+        *cx.local.current_state = if fast_boot {
+            checkpoint::Checkpoint::load(cx.local.peripherals).and_then(|checkpoint| checkpoint.into_current_state(cx.local.peripherals)).unwrap_or(CurrentState::POR)
+        } else {
+            CurrentState::POR
+        };
 
         loop {
             dispatch_handler(cx.local.current_state, &mut stream, cx.local.peripherals, fast_boot).await;
@@ -420,7 +433,7 @@ mod app {
         }
     }
 
-    #[task(binds = USART1, local = [emulator_channels])]
+    #[task(binds = USART1, local = [emulator_channels], priority = 3)]
     fn emulator_hook(_cx: emulator_hook::Context) {
         #[cfg(feature = "emulator")]
         match emulator::serial_interrupt() {
@@ -439,6 +452,10 @@ mod app {
             Some(emulator::PeripheralIncomingMsg::FlashContent) => {
                 let data = emulator::read_serial();
                 let _ = _cx.local.emulator_channels.flash.try_send(data);
+            }
+            Some(emulator::PeripheralIncomingMsg::RtcRegister) => {
+                let data = emulator::read_serial();
+                let _ = _cx.local.emulator_channels.rtc.try_send(data);
             }
             _ => {}
         }

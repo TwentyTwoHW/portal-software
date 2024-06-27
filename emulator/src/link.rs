@@ -26,14 +26,22 @@ use model::emulator::{CardMessage, EmulatorMessage};
 
 use crate::utils::{EmulatorInstance, ReadWrite};
 
+#[derive(Debug)]
 pub enum FlashMessage {
-    Read,
-    Write(Vec<u8>),
+    Read(u16),
+    Write(u16, Vec<u8>),
+}
+
+#[derive(Debug)]
+pub enum RtcMessage {
+    Read(u8),
+    Write(u8, u32),
 }
 
 pub struct EmulatorStreams {
     pub display: mpsc::UnboundedReceiver<Vec<u16>>,
     pub flash: mpsc::UnboundedReceiver<FlashMessage>,
+    pub rtc: mpsc::UnboundedReceiver<RtcMessage>,
     pub tick: mpsc::UnboundedReceiver<()>,
     pub finish_boot: mpsc::UnboundedReceiver<()>,
 }
@@ -44,6 +52,7 @@ pub fn stream_incoming_messages(
     let (nfc_s, nfc) = mpsc::unbounded_channel();
     let (display_s, display) = mpsc::unbounded_channel();
     let (flash_s, flash) = mpsc::unbounded_channel();
+    let (rtc_s, rtc) = mpsc::unbounded_channel();
     let (tick_s, tick) = mpsc::unbounded_channel();
     let (finish_boot_s, finish_boot) = mpsc::unbounded_channel();
 
@@ -55,10 +64,16 @@ pub fn stream_incoming_messages(
                 CardMessage::FlushDisplay => log::trace!("< FlushDisplay"),
                 CardMessage::Display(data) => log::trace!("< Display({})", data.len()),
                 CardMessage::Nfc(data) => log::trace!("< Nfc({})", data.len()),
-                CardMessage::ReadFlash => log::trace!("< ReadFlash"),
-                CardMessage::WriteFlash(data) => log::trace!("< WriteFlash({})", data.len()),
+                CardMessage::ReadFlash(page) => log::trace!("< ReadFlash(page={})", page),
+                CardMessage::WriteFlash(page, data) => {
+                    log::trace!("< WriteFlash(page={}, data_len={})", page, data.len())
+                }
                 CardMessage::Tick => log::trace!("< Tick"),
                 CardMessage::FinishBoot => log::trace!("< FinishBoot"),
+                CardMessage::ReadRtcRegister(reg) => log::trace!("< ReadRtcRegister({:02X})", reg),
+                CardMessage::WriteRtcRegister(reg, value) => {
+                    log::trace!("< WriteRtcRegister({:02X}, {:08X?})", reg, value)
+                }
             }
             let result = match card_message {
                 CardMessage::Display(data) => {
@@ -75,14 +90,20 @@ pub fn stream_incoming_messages(
                     result
                 }
                 CardMessage::Nfc(data) => nfc_s.send(data).map_err(|e| e.to_string()),
-                CardMessage::ReadFlash => {
-                    flash_s.send(FlashMessage::Read).map_err(|e| e.to_string())
-                }
-                CardMessage::WriteFlash(data) => flash_s
-                    .send(FlashMessage::Write(data))
+                CardMessage::ReadFlash(page) => flash_s
+                    .send(FlashMessage::Read(page))
+                    .map_err(|e| e.to_string()),
+                CardMessage::WriteFlash(page, data) => flash_s
+                    .send(FlashMessage::Write(page, data))
                     .map_err(|e| e.to_string()),
                 CardMessage::Tick => tick_s.send(()).map_err(|e| e.to_string()),
                 CardMessage::FinishBoot => finish_boot_s.send(()).map_err(|e| e.to_string()),
+                CardMessage::ReadRtcRegister(reg) => {
+                    rtc_s.send(RtcMessage::Read(reg)).map_err(|e| e.to_string())
+                }
+                CardMessage::WriteRtcRegister(reg, value) => rtc_s
+                    .send(RtcMessage::Write(reg, value))
+                    .map_err(|e| e.to_string()),
             };
 
             if let Err(e) = result {
@@ -96,6 +117,7 @@ pub fn stream_incoming_messages(
         EmulatorStreams {
             display,
             flash,
+            rtc,
             tick,
             finish_boot,
         },
@@ -126,20 +148,25 @@ where
 
 pub async fn handle_read_flash(
     flash: &mut impl ReadWrite,
+    page: u16,
     card: &mut mpsc::UnboundedSender<EmulatorMessage>,
 ) -> Result<(), crate::Error> {
-    let mut data = vec![];
+    let mut data = [0u8; 2048];
 
-    flash.seek(SeekFrom::Start(0))?;
-    flash.read_to_end(&mut data)?;
+    flash.seek(SeekFrom::Start(page as u64 * 2048))?;
+    flash.read(&mut data)?;
 
-    card.send(EmulatorMessage::FlashContent(data))?;
+    card.send(EmulatorMessage::FlashContent(data.to_vec()))?;
 
     Ok(())
 }
 
-pub fn handle_write_flash(flash: &mut impl ReadWrite, data: &[u8]) -> Result<(), crate::Error> {
-    flash.seek(SeekFrom::Start(0))?;
+pub fn handle_write_flash(
+    flash: &mut impl ReadWrite,
+    page: u16,
+    data: &[u8],
+) -> Result<(), crate::Error> {
+    flash.seek(SeekFrom::Start(page as u64 * 2048))?;
     flash.write_all(data)?;
 
     Ok(())
@@ -183,13 +210,28 @@ where
 
     while let Some(flash_msg) = try_pull_msg(&mut emulator.msgs.flash)? {
         match flash_msg {
-            FlashMessage::Read => {
-                append_to_console("< ", "ReadFlash", arg);
-                handle_read_flash(&mut emulator.flash, &mut emulator.card).await?;
+            FlashMessage::Read(page) => {
+                append_to_console("< ", &format!("ReadFlash({})", page), arg);
+                handle_read_flash(&mut emulator.flash, page, &mut emulator.card).await?;
             }
-            FlashMessage::Write(data) => {
-                append_to_console("< ", "WriteFlash", arg);
-                handle_write_flash(&mut emulator.flash, &data)?;
+            FlashMessage::Write(page, data) => {
+                append_to_console("< ", &format!("WriteFlash({})", page), arg);
+                handle_write_flash(&mut emulator.flash, page, &data)?;
+            }
+        }
+    }
+    while let Some(rtc_msg) = try_pull_msg(&mut emulator.msgs.rtc)? {
+        match rtc_msg {
+            RtcMessage::Read(reg) => {
+                append_to_console("< ", &format!("ReadReg({:02X})", reg), arg);
+                emulator
+                    .card
+                    .send(EmulatorMessage::Rtc(emulator.rtc))
+                    .unwrap();
+            }
+            RtcMessage::Write(reg, value) => {
+                append_to_console("< ", &format!("WriteReg({:02X} = {:08X})", reg, value), arg);
+                emulator.rtc[reg as usize] = value;
             }
         }
     }
@@ -211,6 +253,10 @@ where
         emulator
             .card
             .send(EmulatorMessage::Entropy(emulator.entropy.clone()))
+            .unwrap();
+        emulator
+            .card
+            .send(EmulatorMessage::Rtc(emulator.rtc))
             .unwrap();
         emulator.sdk.new_tag().await?;
     }

@@ -213,6 +213,10 @@ async fn main() -> Result<(), emulator::Error> {
                 .card
                 .send(model::emulator::EmulatorMessage::Entropy(entropy))
                 .unwrap();
+            emulator
+                .card
+                .send(model::emulator::EmulatorMessage::Rtc(emulator.rtc))
+                .unwrap();
 
             sdk.new_tag().await.expect("New tag");
         }
