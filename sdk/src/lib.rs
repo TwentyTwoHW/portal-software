@@ -74,6 +74,7 @@ pub struct PortalSdk {
 
 #[cfg(feature = "debug")]
 #[cfg_attr(feature = "bindings", derive(uniffi::Object))]
+#[derive(Debug)]
 pub enum DebugMessage {
     RawOut(Vec<u8>),
     Out(Request),

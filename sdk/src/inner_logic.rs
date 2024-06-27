@@ -225,7 +225,6 @@ pub(crate) async fn inner_future(
         encrypt: &mut CipherState,
         decrypt: &mut CipherState,
         raw_message: Vec<u8>,
-        replies: &channel::Sender<Result<Reply, FutureError>>,
         use_fast_ops: bool,
 
         debug: &channel::Sender<super::DebugMessage>,
@@ -234,8 +233,11 @@ pub(crate) async fn inner_future(
             .send(super::DebugMessage::RawOut(raw_message.clone()))
             .await?;
 
+        let (temp_s, temp_r) = channel::unbounded();
         let msg = Message::from_slice_encrypt(&raw_message, encrypt)?;
-        process_raw_message(nfc, decrypt, msg, replies, use_fast_ops, debug).await?;
+        process_raw_message(nfc, decrypt, msg, &temp_s, use_fast_ops, debug).await?;
+
+        core::mem::drop(temp_r);
 
         Ok(())
     }
@@ -283,7 +285,7 @@ pub(crate) async fn inner_future(
             _data = debug_in.recv().fuse() => {
                 #[cfg(feature = "debug")]
                 match _data {
-                    Ok(data) => process_send_debug_msg(nfc, &mut encrypt, &mut decrypt, data, replies, use_fast_ops, #[cfg(feature = "debug")] debug_out).await,
+                    Ok(data) => process_send_debug_msg(nfc, &mut encrypt, &mut decrypt, data, use_fast_ops, #[cfg(feature = "debug")] debug_out).await,
                     Err(e) => Err(e.into()),
                 }
                 #[cfg(not(feature = "debug"))]
