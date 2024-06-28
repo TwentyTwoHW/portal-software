@@ -257,6 +257,8 @@ pub async fn handle_confirm_sign_psbt(
 
     peripherals.nfc_finished.recv().await.unwrap();
 
+    checkpoint.remove(&peripherals.rtc);
+
     Ok(CurrentState::Idle {
         wallet: Rc::clone(wallet),
     })
@@ -350,6 +352,8 @@ pub async fn handle_display_address_request(
         .await
         .unwrap();
 
+    checkpoint.remove(&peripherals.rtc);
+
     Ok(CurrentState::Idle {
         wallet: Rc::clone(wallet),
     })
@@ -403,6 +407,8 @@ pub async fn handle_public_descriptor_request(
         })
         .await
         .unwrap();
+
+    checkpoint.remove(&peripherals.rtc);
 
     Ok(CurrentState::Idle {
         wallet: Rc::clone(wallet),
@@ -479,6 +485,8 @@ pub async fn handle_get_xpub_request(
         .send(model::Reply::Xpub { xpub, bsms })
         .await
         .unwrap();
+
+    checkpoint.remove(&peripherals.rtc);
 
     Ok(CurrentState::Idle {
         wallet: Rc::clone(wallet),
@@ -794,6 +802,7 @@ pub async fn handle_set_descriptor_request(
     log::debug!("Config saved!");
 
     peripherals.nfc.send(model::Reply::Ok).await.unwrap();
+    checkpoint.remove(&peripherals.rtc);
 
     Ok(CurrentState::Idle {
         wallet: Rc::new(new_wallet),

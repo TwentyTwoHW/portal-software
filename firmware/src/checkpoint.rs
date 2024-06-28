@@ -54,6 +54,9 @@ pub enum CheckpointVariant {
     GetXpub,
     #[cbor(n(6))]
     PublicDescriptor,
+
+    #[cbor(n(7))]
+    Removed,
 }
 
 impl CheckpointVariant {
@@ -66,6 +69,7 @@ impl CheckpointVariant {
             CheckpointVariant::DisplayAddress(_)  => false,
             CheckpointVariant::GetXpub  => true,
             CheckpointVariant::PublicDescriptor  => false,
+            CheckpointVariant::Removed  => false,
         }
     }
 }
@@ -214,6 +218,11 @@ impl Checkpoint {
                 (*v.get(2).unwrap_or(&0) as u32) << 8
             }
         }).collect()
+    }
+
+    pub fn remove(self, rtc: &crate::hw::Rtc) {
+        let removed = Self::new_with_key(CheckpointVariant::Removed, None, None, [0; 24]);
+        removed.commit_registers(rtc);
     }
 
     pub fn into_current_state(self, peripherals: &mut crate::handlers::HandlerPeripherals) -> Result<CurrentState, FlashError> {
