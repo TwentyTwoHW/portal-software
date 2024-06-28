@@ -328,6 +328,7 @@ impl Tester {
     }
 
     pub async fn nfc_assertion(&mut self, assertion: model::Reply) -> Result<(), crate::Error> {
+        self.wait_ticks(1).await?;
         self.nfc_assertion_raw(assertion, false).await
     }
 
@@ -360,6 +361,7 @@ impl Tester {
     pub async fn reset(&mut self) -> Result<(), crate::Error> {
         self.op_sender.send(TestAction::Reset(true).into()).await?;
         self.expect_reply().await?;
+        self.wait_ticks(1).await?; // Force call to manage_hw
 
         Ok(())
     }
@@ -367,6 +369,7 @@ impl Tester {
     pub async fn fast_boot_reset(&mut self) -> Result<(), crate::Error> {
         self.op_sender.send(TestAction::Reset(false).into()).await?;
         self.expect_reply().await?;
+        self.wait_ticks(1).await?; // Force call to manage_hw
 
         Ok(())
     }
