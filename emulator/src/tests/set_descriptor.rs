@@ -314,16 +314,7 @@ async fn test_set_descriptor_pkh_external_key(mut tester: Tester) -> Result<(), 
     Ok(())
 }
 
-// mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
-#[functional_test_wrapper::functional_test(flash_file = "./test-vector/initialized-locked.bin")]
-async fn test_set_descriptor_pkh_locked(mut tester: Tester) -> Result<(), crate::Error> {
-    tester.display_assertion(super::LOCKED, None).await?;
-
-    tester.nfc(NfcAction::Unlock("paircode".into())).await?;
-    tester.nfc_assertion(model::Reply::Ok).await?;
-
-    tester.display_assertion(super::PORTAL_READY, None).await?;
-
+async fn common_set_descriptor_sequence(mut tester: Tester) -> Result<(), crate::Error> {
     tester
         .nfc(NfcAction::SetDescriptor(
             format!("pkh({}/*)", DERIVED_BIP48_XPUB),
@@ -358,7 +349,6 @@ async fn test_set_descriptor_pkh_locked(mut tester: Tester) -> Result<(), crate:
         .await?;
 
     tester.reset().await?;
-    tester.wait_ticks(4).await?;
 
     tester.display_assertion(super::LOCKED, None).await?;
 
@@ -375,6 +365,62 @@ async fn test_set_descriptor_pkh_locked(mut tester: Tester) -> Result<(), crate:
             internal: Some("pkh([73c5da0a/48'/1'/0'/2']tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheQ/1/*)#rp64y2dv".into()),
         })
         .await?;
+
+    Ok(())
+}
+
+// mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+#[functional_test_wrapper::functional_test(flash_file = "./test-vector/initialized-locked.bin")]
+async fn test_set_descriptor_pkh_locked(mut tester: Tester) -> Result<(), crate::Error> {
+    tester.display_assertion(super::LOCKED, None).await?;
+
+    tester.nfc(NfcAction::Unlock("paircode".into())).await?;
+    tester.nfc_assertion(model::Reply::Ok).await?;
+
+    tester.display_assertion(super::PORTAL_READY, None).await?;
+
+    common_set_descriptor_sequence(tester).await?;
+
+    Ok(())
+}
+
+// mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+#[functional_test_wrapper::functional_test(flash_file = "./test-vector/initialized-locked.bin")]
+async fn test_set_descriptor_fastboot_locked(mut tester: Tester) -> Result<(), crate::Error> {
+    tester.nfc(NfcAction::GetStatus).await?;
+    tester
+        .nfc_assertion(model::Reply::Info(model::DeviceInfo {
+            initialized: model::InitializationStatus::Initialized {
+                unlocked: false,
+                network: model::bitcoin::Network::Signet,
+                fingerprint: None,
+            },
+            firmware_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+        }))
+        .await?;
+
+    tester.display_assertion(super::LOCKED, None).await?;
+
+    tester.nfc(NfcAction::Unlock("paircode".into())).await?;
+    tester.nfc_assertion(model::Reply::Ok).await?;
+
+    tester.display_assertion(super::PORTAL_READY, None).await?;
+
+    tester.fast_boot_reset().await?;
+
+    tester.nfc(NfcAction::GetStatus).await?;
+    tester
+        .nfc_assertion(model::Reply::Info(model::DeviceInfo {
+            initialized: model::InitializationStatus::Initialized {
+                unlocked: true,
+                network: model::bitcoin::Network::Signet,
+                fingerprint: Some([115, 197, 218, 10]),
+            },
+            firmware_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+        }))
+        .await?;
+
+    common_set_descriptor_sequence(tester).await?;
 
     Ok(())
 }

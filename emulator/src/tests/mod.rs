@@ -30,6 +30,7 @@ use crate::utils::model::*;
 use crate::utils::EmulatorInstance;
 
 mod bitcoin;
+mod fast_boot;
 mod init;
 mod set_descriptor;
 
