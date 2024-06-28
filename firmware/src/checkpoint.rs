@@ -19,12 +19,16 @@ use core::ops::Deref;
 
 use alloc::{boxed::Box, vec::Vec};
 
-use minicbor::{Encode, Decode};
+use minicbor::{Decode, Encode};
 
 use model::{ByteArray, EncryptionKey, SerializedDerivationPath};
 
-use crate::{config::read_config, hw::{read_flash, write_flash, FlashError}, CurrentState};
 use crate::hw_common::PAGE_SIZE;
+use crate::{
+    config::read_config,
+    hw::{read_flash, write_flash, FlashError},
+    CurrentState,
+};
 
 const CHECKPOINT_PAGE: usize = 254;
 
@@ -33,7 +37,6 @@ pub const MAGIC: u32 = 0xFA57B007;
 pub const MAGIC_REGISTER: usize = 0;
 const FIRST_KEY_REGISTER: usize = 1;
 const FIRST_DATA_REGISTER: usize = 9;
-
 
 #[derive(Debug, Encode, Decode)]
 pub enum CheckpointVariant {
@@ -64,12 +67,12 @@ impl CheckpointVariant {
         match self {
             CheckpointVariant::UpdateFirmware { .. } => true,
             CheckpointVariant::GenerateMnemonic => false,
-            CheckpointVariant::SignPsbt  => true,
-            CheckpointVariant::SetDescriptor  => true,
-            CheckpointVariant::DisplayAddress(_)  => false,
-            CheckpointVariant::GetXpub  => true,
-            CheckpointVariant::PublicDescriptor  => false,
-            CheckpointVariant::Removed  => false,
+            CheckpointVariant::SignPsbt => true,
+            CheckpointVariant::SetDescriptor => true,
+            CheckpointVariant::DisplayAddress(_) => false,
+            CheckpointVariant::GetXpub => true,
+            CheckpointVariant::PublicDescriptor => false,
+            CheckpointVariant::Removed => false,
         }
     }
 }
@@ -85,7 +88,7 @@ pub struct Resumable {
 }
 
 impl Resumable {
-    pub fn fresh() ->  Self {
+    pub fn fresh() -> Self {
         Self::new_with_ticks(0, 0, 0)
     }
 
@@ -94,24 +97,38 @@ impl Resumable {
     }
 
     pub fn new_with_ticks(page: usize, progress: u32, ticks: usize) -> Self {
-        Resumable { page, progress, ticks }
+        Resumable {
+            page,
+            progress,
+            ticks,
+        }
     }
 
-    pub fn wrap_iter<'s, T>(&'s self, iter: impl Iterator<Item = T> + 's) -> impl Iterator<Item = (T, Self, bool)> + 's {
+    pub fn wrap_iter<'s, T>(
+        &'s self,
+        iter: impl Iterator<Item = T> + 's,
+    ) -> impl Iterator<Item = (T, Self, bool)> + 's {
         self.wrap_iter_with_offset(0, iter)
     }
 
-    pub fn wrap_iter_with_offset<'s, T>(&'s self, offset: usize, iter: impl Iterator<Item = T> + 's) -> impl Iterator<Item = (T, Self, bool)> + 's {
-        iter.into_iter().enumerate().skip(self.page.saturating_sub(offset)).map(move |(page, v)| {
-            let real_page = page + offset;
-            let (state, draw) = if real_page == self.page {
-                (*self, self.ticks == 0)
-            } else {
-                (Resumable::new(real_page, 0), true)
-            };
+    pub fn wrap_iter_with_offset<'s, T>(
+        &'s self,
+        offset: usize,
+        iter: impl Iterator<Item = T> + 's,
+    ) -> impl Iterator<Item = (T, Self, bool)> + 's {
+        iter.into_iter()
+            .enumerate()
+            .skip(self.page.saturating_sub(offset))
+            .map(move |(page, v)| {
+                let real_page = page + offset;
+                let (state, draw) = if real_page == self.page {
+                    (*self, self.ticks == 0)
+                } else {
+                    (Resumable::new(real_page, 0), true)
+                };
 
-            (v, state, draw)
-        })
+                (v, state, draw)
+            })
     }
 
     pub fn single_page_with_offset(&self, offset: usize) -> Option<(Self, bool)> {
@@ -145,7 +162,12 @@ impl Checkpoint {
         encryption_key
     }
 
-    pub fn new_with_key(variant: CheckpointVariant, aux: Option<Vec<u8>>, resumable: Option<Resumable>, encryption_key: [u8; 24]) -> Self {
+    pub fn new_with_key(
+        variant: CheckpointVariant,
+        aux: Option<Vec<u8>>,
+        resumable: Option<Resumable>,
+        encryption_key: [u8; 24],
+    ) -> Self {
         Checkpoint {
             variant,
             encryption_key: Box::new(encryption_key.into()),
@@ -154,11 +176,19 @@ impl Checkpoint {
         }
     }
 
-    pub fn new(variant: CheckpointVariant, aux: Option<Vec<u8>>, resumable: Option<Resumable>, rng: &mut impl rand::Rng) -> Self{
+    pub fn new(
+        variant: CheckpointVariant,
+        aux: Option<Vec<u8>>,
+        resumable: Option<Resumable>,
+        rng: &mut impl rand::Rng,
+    ) -> Self {
         Self::new_with_key(variant, aux, resumable, Self::gen_key(rng))
     }
 
-    pub fn commit(&self, peripherals: &mut crate::handlers::HandlerPeripherals) -> Result<(), FlashError> {
+    pub fn commit(
+        &self,
+        peripherals: &mut crate::handlers::HandlerPeripherals,
+    ) -> Result<(), FlashError> {
         if self.variant.has_aux() && self.aux.is_none() {
             return Err(FlashError::CorruptedData);
         }
@@ -180,23 +210,29 @@ impl Checkpoint {
     }
 
     pub fn load(peripherals: &mut crate::handlers::HandlerPeripherals) -> Result<Self, FlashError> {
-        let registers = (FIRST_DATA_REGISTER..31).filter_map(|v| {
-            let value = peripherals.rtc.read_backup_register(v);
-            value.map(|v| v.to_be_bytes())
-        }).flatten().collect::<Vec<u8>>();
+        let registers = (FIRST_DATA_REGISTER..31)
+            .filter_map(|v| {
+                let value = peripherals.rtc.read_backup_register(v);
+                value.map(|v| v.to_be_bytes())
+            })
+            .flatten()
+            .collect::<Vec<u8>>();
         let len = registers[0] as usize;
         if len > registers.len() - 1 {
             return Err(FlashError::CorruptedData);
         }
-        let bytes = &registers[1..1+len];
+        let bytes = &registers[1..1 + len];
 
         let mut checkpoint: Self = minicbor::decode(&bytes)?;
         if checkpoint.variant.has_aux() {
             let mut buf = [0u8; PAGE_SIZE];
             let aux = read_flash(&mut peripherals.flash, CHECKPOINT_PAGE, &mut buf)?;
 
-            let key = EncryptionKey::new_stretch_key(checkpoint.encryption_key.deref().as_slice(), 1);
-            let aux = key.decrypt_raw(&aux).map_err(|_| FlashError::CorruptedData)?;
+            let key =
+                EncryptionKey::new_stretch_key(checkpoint.encryption_key.deref().as_slice(), 1);
+            let aux = key
+                .decrypt_raw(&aux)
+                .map_err(|_| FlashError::CorruptedData)?;
             checkpoint.aux = Some(aux);
         }
 
@@ -209,15 +245,17 @@ impl Checkpoint {
         let mut data = alloc::vec![len];
         data.extend(bytes);
 
-        data.chunks(4).map(|v| {
-            if v.len() == 4 {
-                u32::from_be_bytes(v.try_into().unwrap())
-            } else {
-                (*v.get(0).unwrap_or(&0) as u32) << 24 |
-                (*v.get(1).unwrap_or(&0) as u32) << 16 |
-                (*v.get(2).unwrap_or(&0) as u32) << 8
-            }
-        }).collect()
+        data.chunks(4)
+            .map(|v| {
+                if v.len() == 4 {
+                    u32::from_be_bytes(v.try_into().unwrap())
+                } else {
+                    (*v.get(0).unwrap_or(&0) as u32) << 24
+                        | (*v.get(1).unwrap_or(&0) as u32) << 16
+                        | (*v.get(2).unwrap_or(&0) as u32) << 8
+                }
+            })
+            .collect()
     }
 
     pub fn remove(self, rtc: &crate::hw::Rtc) {
@@ -225,10 +263,15 @@ impl Checkpoint {
         removed.commit_registers(rtc);
     }
 
-    pub fn into_current_state(self, peripherals: &mut crate::handlers::HandlerPeripherals) -> Result<CurrentState, FlashError> {
+    pub fn into_current_state(
+        self,
+        peripherals: &mut crate::handlers::HandlerPeripherals,
+    ) -> Result<CurrentState, FlashError> {
         use crate::handlers::init::TryIntoCurrentState;
 
-        fn get_config(peripherals: &mut crate::HandlerPeripherals) -> Result<Option<CurrentState>, FlashError> {
+        fn get_config(
+            peripherals: &mut crate::HandlerPeripherals,
+        ) -> Result<Option<CurrentState>, FlashError> {
             let config = read_config(&mut peripherals.flash)?;
             Ok(config.try_into_current_state(&peripherals.rtc).ok())
         }
@@ -236,34 +279,59 @@ impl Checkpoint {
         match (self.variant, self.aux, self.resumable) {
             (CheckpointVariant::UpdateFirmware { state }, Some(aux), _) => {
                 let header = minicbor::decode(&aux)?;
-                Ok(CurrentState::UpdatingFw { header, fast_boot: Some((state, (*self.encryption_key).into())) })
-            },
+                Ok(CurrentState::UpdatingFw {
+                    header,
+                    fast_boot: Some((state, (*self.encryption_key).into())),
+                })
+            }
             (CheckpointVariant::GenerateMnemonic, _, _) => {
                 let config = read_config(&mut peripherals.flash)?;
                 match config {
-                    model::Config::Unverified(unverified) => Ok(CurrentState::UnverifiedConfig { config: unverified }),
+                    model::Config::Unverified(unverified) => {
+                        Ok(CurrentState::UnverifiedConfig { config: unverified })
+                    }
                     _ => Err(FlashError::CorruptedData),
                 }
-            },
+            }
             (CheckpointVariant::SignPsbt, Some(aux), Some(resumable)) => {
                 if let Some(CurrentState::Idle { wallet }) = get_config(peripherals)? {
                     let aux: SignPsbtState = minicbor::decode(&aux)?;
-                    Ok(CurrentState::ConfirmSignPsbt { wallet, resumable, sig_bytes: aux.sig_bytes.into(), encryption_key: (*self.encryption_key).into(), fees: aux.fees, outputs: aux.outputs })
+                    Ok(CurrentState::ConfirmSignPsbt {
+                        wallet,
+                        resumable,
+                        sig_bytes: aux.sig_bytes.into(),
+                        encryption_key: (*self.encryption_key).into(),
+                        fees: aux.fees,
+                        outputs: aux.outputs,
+                    })
                 } else {
                     Err(FlashError::CorruptedData)
                 }
-            },
+            }
             (CheckpointVariant::SetDescriptor, Some(aux), Some(resumable)) => {
                 if let Some(CurrentState::Idle { wallet }) = get_config(peripherals)? {
                     let aux: SetDescriptorState = minicbor::decode(&aux)?;
-                    Ok(CurrentState::SetDescriptor { wallet, variant: aux.variant, script_type: aux.script_type, bsms: aux.bsms, resumable, is_fast_boot: true, encryption_key: (*self.encryption_key).into() })
+                    Ok(CurrentState::SetDescriptor {
+                        wallet,
+                        variant: aux.variant,
+                        script_type: aux.script_type,
+                        bsms: aux.bsms,
+                        resumable,
+                        is_fast_boot: true,
+                        encryption_key: (*self.encryption_key).into(),
+                    })
                 } else {
                     Err(FlashError::CorruptedData)
                 }
             }
             (CheckpointVariant::DisplayAddress(index), _, Some(resumable)) => {
                 if let Some(CurrentState::Idle { wallet }) = get_config(peripherals)? {
-                    Ok(CurrentState::DisplayAddress { wallet, index, resumable, is_fast_boot: true })
+                    Ok(CurrentState::DisplayAddress {
+                        wallet,
+                        index,
+                        resumable,
+                        is_fast_boot: true,
+                    })
                 } else {
                     Err(FlashError::CorruptedData)
                 }
@@ -271,35 +339,54 @@ impl Checkpoint {
             (CheckpointVariant::GetXpub, Some(aux), Some(resumable)) => {
                 if let Some(CurrentState::Idle { wallet }) = get_config(peripherals)? {
                     let derivation_path: SerializedDerivationPath = minicbor::decode(&aux)?;
-                    Ok(CurrentState::GetXpub { wallet, derivation_path: derivation_path.into(), resumable, is_fast_boot: true, encryption_key: (*self.encryption_key).into() })
+                    Ok(CurrentState::GetXpub {
+                        wallet,
+                        derivation_path: derivation_path.into(),
+                        resumable,
+                        is_fast_boot: true,
+                        encryption_key: (*self.encryption_key).into(),
+                    })
                 } else {
                     Err(FlashError::CorruptedData)
                 }
             }
             (CheckpointVariant::PublicDescriptor, _, Some(resumable)) => {
                 if let Some(CurrentState::Idle { wallet }) = get_config(peripherals)? {
-                    Ok(CurrentState::PublicDescriptor { wallet, resumable, is_fast_boot: true })
+                    Ok(CurrentState::PublicDescriptor {
+                        wallet,
+                        resumable,
+                        is_fast_boot: true,
+                    })
                 } else {
                     Err(FlashError::CorruptedData)
                 }
             }
 
-            _ => Err(FlashError::CorruptedData)
+            _ => Err(FlashError::CorruptedData),
         }
     }
 }
 
 pub fn write_fastboot_key(key: &[u8; 32], rtc: &crate::hw::Rtc) {
     for (i, v) in key.chunks_exact(4).enumerate() {
-        rtc.write_backup_register(i + FIRST_KEY_REGISTER, u32::from_be_bytes(v.try_into().unwrap()));
+        rtc.write_backup_register(
+            i + FIRST_KEY_REGISTER,
+            u32::from_be_bytes(v.try_into().unwrap()),
+        );
     }
 }
 
 pub fn get_fastboot_key(rtc: &crate::hw::Rtc) -> [u8; 32] {
-        (FIRST_KEY_REGISTER..).take(8).filter_map(|v| {
+    (FIRST_KEY_REGISTER..)
+        .take(8)
+        .filter_map(|v| {
             let value = rtc.read_backup_register(v);
             value.map(|v| v.to_be_bytes())
-        }).flatten().collect::<Vec<u8>>().try_into().unwrap()
+        })
+        .flatten()
+        .collect::<Vec<u8>>()
+        .try_into()
+        .unwrap()
 }
 
 #[derive(Debug, minicbor::Encode, minicbor::Decode)]
@@ -326,7 +413,7 @@ pub struct SetDescriptorState {
 pub struct CborAddress(
     #[cbor(n(0))]
     #[cbor(with = "cbor_bitcoin_address")]
-    pub bitcoin::Address
+    pub bitcoin::Address,
 );
 impl From<bitcoin::Address> for CborAddress {
     fn from(value: bitcoin::Address) -> Self {
@@ -381,4 +468,3 @@ mod cbor_bitcoin_address {
         Ok(())
     }
 }
-

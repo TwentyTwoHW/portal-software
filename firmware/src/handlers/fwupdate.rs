@@ -24,10 +24,10 @@ use futures::prelude::*;
 
 use rtic_monotonics::systick::ExtU32;
 
-#[cfg(feature = "device")]
-use stm32l4xx_hal::{flash, flash::Read, flash::WriteErase, stm32};
 #[cfg(feature = "emulator")]
 use crate::emulator::flash;
+#[cfg(feature = "device")]
+use stm32l4xx_hal::{flash, flash::Read, flash::WriteErase, stm32};
 
 use bitcoin_hashes::{sha256, Hash, HashEngine};
 
@@ -281,11 +281,14 @@ impl<'h> FwUpdater<'h> {
             );
 
             flash
-                .erase_page(bank_to_flash.get_physical_page(BankStatus::Spare, crate::config::CONFIG_PAGE))
+                .erase_page(
+                    bank_to_flash.get_physical_page(BankStatus::Spare, crate::config::CONFIG_PAGE),
+                )
                 .map_err(|_| Error::FlashError)?;
             flash
                 .write(
-                    bank_to_flash.get_logical_address(BankStatus::Spare, crate::config::CONFIG_PAGE),
+                    bank_to_flash
+                        .get_logical_address(BankStatus::Spare, crate::config::CONFIG_PAGE),
                     &buf,
                 )
                 .map_err(|_| Error::FlashError)?;
@@ -340,11 +343,22 @@ impl<'h> FwUpdater<'h> {
             midstate: Box::new(ByteArray::from(self.hash.midstate().into_inner())),
             tail: self.tail,
         };
-        let fb_checkpoint = checkpoint::Checkpoint::new_with_key(checkpoint::CheckpointVariant::UpdateFirmware { state }, None, None, fb_key);
+        let fb_checkpoint = checkpoint::Checkpoint::new_with_key(
+            checkpoint::CheckpointVariant::UpdateFirmware { state },
+            None,
+            None,
+            fb_key,
+        );
         fb_checkpoint.commit_registers(rtc);
     }
 
-    fn chunk(&mut self, flash: &mut UnlockedFlash, data: &[u8], rtc: &mut crate::hw::Rtc, fb_key: &[u8; 24]) -> Result<(), Error> {
+    fn chunk(
+        &mut self,
+        flash: &mut UnlockedFlash,
+        data: &[u8],
+        rtc: &mut crate::hw::Rtc,
+        fb_key: &[u8; 24],
+    ) -> Result<(), Error> {
         if self.page * hw_common::PAGE_SIZE > self.header.size {
             return Err(Error::InvalidFirmware);
         }
@@ -376,7 +390,8 @@ impl<'h> FwUpdater<'h> {
 
         log::debug!("Done!");
 
-        let data_end = match ((self.page + 1) * hw_common::PAGE_SIZE).checked_sub(self.header.size) {
+        let data_end = match ((self.page + 1) * hw_common::PAGE_SIZE).checked_sub(self.header.size)
+        {
             None => hw_common::PAGE_SIZE,
             Some(x) => hw_common::PAGE_SIZE - x,
         };
@@ -517,17 +532,18 @@ pub async fn handle_begin_fw_update(
                 next_page: 0,
                 tail: [0; version::TAIL_SIZE],
             };
-            let fb_checkpoint = checkpoint::Checkpoint::new(checkpoint::CheckpointVariant::UpdateFirmware { state }, Some(minicbor::to_vec(&header).unwrap()), None, &mut peripherals.rng);
+            let fb_checkpoint = checkpoint::Checkpoint::new(
+                checkpoint::CheckpointVariant::UpdateFirmware { state },
+                Some(minicbor::to_vec(&header).unwrap()),
+                None,
+                &mut peripherals.rng,
+            );
             fb_checkpoint.commit(peripherals)?;
 
             (None, *fb_checkpoint.encryption_key)
-        },
-        Some((state, key)) if state.next_page == 0 => {
-            (None, key.into())
-        },
-        Some((state, key)) => {
-            (Some(state), key.into())
         }
+        Some((state, key)) if state.next_page == 0 => (None, key.into()),
+        Some((state, key)) => (Some(state), key.into()),
     };
     let mut drop_next_message = state.is_some();
 
@@ -576,7 +592,12 @@ pub async fn handle_begin_fw_update(
         match events.next().await {
             Some(model::Request::FwUpdateChunk(data)) => {
                 if !drop_next_message {
-                    updater.chunk(&mut lock, data.deref().deref(), &mut peripherals.rtc, &fb_key)?;
+                    updater.chunk(
+                        &mut lock,
+                        data.deref().deref(),
+                        &mut peripherals.rtc,
+                        &fb_key,
+                    )?;
                 } else {
                     drop_next_message = false;
                 }

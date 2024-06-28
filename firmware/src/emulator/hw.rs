@@ -282,7 +282,10 @@ impl EmulatedNT3H {
         }
 
         // Signal whether the buffer is still full
-        self.status = self.status.clone().with_SRAM_I2C_READY(self.incoming.is_full());
+        self.status = self
+            .status
+            .clone()
+            .with_SRAM_I2C_READY(self.incoming.is_full());
 
         let reply = match data[0] {
             // Read session reg
@@ -399,9 +402,7 @@ impl Flash {
     }
 
     pub fn unlock<'s>(&'s self) -> super::flash::UnlockedFlash<'s> {
-        super::flash::UnlockedFlash {
-            flash: self
-        }
+        super::flash::UnlockedFlash { flash: self }
     }
 
     pub fn set_channel(&self, channel: hw_common::ChannelReceiver<Vec<u8>>) {
@@ -413,11 +414,13 @@ impl Flash {
         super::write_serial(msg.write_to());
 
         loop {
-            if let Ok(data) = self.channel
+            if let Ok(data) = self
+                .channel
                 .borrow_mut()
                 .as_mut()
                 .expect("The channel should be set during initialization")
-                .try_recv() {
+                .try_recv()
+            {
                 break data;
             }
         }
@@ -448,7 +451,7 @@ pub fn enable_debug_during_sleep(_: &mut hal::pac::Peripherals) {}
 
 #[derive(Debug)]
 pub enum FlashError {
-    CorruptedData
+    CorruptedData,
 }
 impl From<minicbor::decode::Error> for FlashError {
     fn from(_: minicbor::decode::Error) -> Self {
@@ -456,10 +459,17 @@ impl From<minicbor::decode::Error> for FlashError {
     }
 }
 
-pub fn read_flash<'b>(flash: &mut Flash, page: usize, buf: &'b mut [u8; 2048]) -> Result<&'b [u8], FlashError> {
+pub fn read_flash<'b>(
+    flash: &mut Flash,
+    page: usize,
+    buf: &'b mut [u8; 2048],
+) -> Result<&'b [u8], FlashError> {
     let data = flash.read(page as u16);
-    let len = core::cmp::min(u16::from_be_bytes(data[..2].try_into().unwrap()) as usize, crate::hw_common::PAGE_SIZE - 2);
-    buf[..len].copy_from_slice(&data[2..2+len]);
+    let len = core::cmp::min(
+        u16::from_be_bytes(data[..2].try_into().unwrap()) as usize,
+        crate::hw_common::PAGE_SIZE - 2,
+    );
+    buf[..len].copy_from_slice(&data[2..2 + len]);
 
     Ok(&buf[..len])
 }
@@ -474,7 +484,7 @@ pub fn write_flash(flash: &mut Flash, page: usize, serialized: &[u8]) -> Result<
 
 pub struct Rtc {
     channel: RefCell<Option<hw_common::ChannelReceiver<Vec<u8>>>>,
-    registers: RefCell<([u32; 32], bool)>
+    registers: RefCell<([u32; 32], bool)>,
 }
 
 impl Rtc {
@@ -497,12 +507,19 @@ impl Rtc {
             super::write_serial(msg.write_to());
 
             loop {
-                if let Ok(data) = self.channel
+                if let Ok(data) = self
+                    .channel
                     .borrow_mut()
                     .as_mut()
                     .expect("The channel should be set during initialization")
-                    .try_recv() {
-                    let u32s = data.chunks_exact(4).map(|v| u32::from_be_bytes(v.try_into().unwrap())).collect::<alloc::vec::Vec<_>>().try_into().unwrap();
+                    .try_recv()
+                {
+                    let u32s = data
+                        .chunks_exact(4)
+                        .map(|v| u32::from_be_bytes(v.try_into().unwrap()))
+                        .collect::<alloc::vec::Vec<_>>()
+                        .try_into()
+                        .unwrap();
                     borrow.0 = u32s;
                     borrow.1 = false;
                     break;

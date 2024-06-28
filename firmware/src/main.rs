@@ -36,8 +36,8 @@ extern crate stm32f4xx_hal as hal;
 #[cfg(feature = "device")]
 extern crate stm32l4xx_hal as hal;
 
-mod config;
 mod checkpoint;
+mod config;
 #[cfg(feature = "emulator")]
 mod emulator;
 mod error;
@@ -177,8 +177,17 @@ mod app {
         dp.RCC.apb2enr.write(|w| w.syscfgen().set_bit());
 
         #[allow(unused_mut)]
-        let (mut nfc, nfc_interrupt, nfc_finished, display, tsc, mut rng, flash, rtc, mut fast_boot) =
-            hw::init_peripherals(dp, cp).unwrap();
+        let (
+            mut nfc,
+            nfc_interrupt,
+            nfc_finished,
+            display,
+            tsc,
+            mut rng,
+            flash,
+            rtc,
+            mut fast_boot,
+        ) = hw::init_peripherals(dp, cp).unwrap();
 
         log::debug!("Initialized peripherals");
 
@@ -217,7 +226,8 @@ mod app {
                             found += 1;
                         } else if val == crate::emulator::PeripheralIncomingMsg::RtcRegister {
                             log::debug!("Registers = {:02X?}", &data[..4]);
-                            fast_boot = u32::from_be_bytes(data[..4].try_into().unwrap()) == checkpoint::MAGIC;
+                            fast_boot = u32::from_be_bytes(data[..4].try_into().unwrap())
+                                == checkpoint::MAGIC;
                             found += 1;
                         }
                     }
@@ -227,7 +237,10 @@ mod app {
             rng = rand_chacha::ChaCha20Rng::from_seed(entropy.try_into().unwrap());
 
             if !fast_boot {
-                let msg = model::emulator::CardMessage::WriteRtcRegister(checkpoint::MAGIC_REGISTER as u8, checkpoint::MAGIC);
+                let msg = model::emulator::CardMessage::WriteRtcRegister(
+                    checkpoint::MAGIC_REGISTER as u8,
+                    checkpoint::MAGIC,
+                );
                 super::write_serial(msg.write_to());
             }
 
@@ -240,23 +253,21 @@ mod app {
         };
 
         let peripherals = HandlerPeripherals {
-                    display,
-                    rng,
-                    flash,
-                    rtc,
-                    nfc: nfc_shared.outgoing,
-                    nfc_finished,
-                    tsc_enabled,
-                };
+            display,
+            rng,
+            flash,
+            rtc,
+            nfc: nfc_shared.outgoing,
+            nfc_finished,
+            tsc_enabled,
+        };
 
         nfc_read_loop::spawn(noise_rng).unwrap();
         timer_ticking::spawn().unwrap();
         main_task::spawn().unwrap();
 
         (
-            Shared {
-                fast_boot,
-            },
+            Shared { fast_boot },
             Local {
                 nfc: (nfc, nfc_local),
                 nfc_interrupt,
@@ -310,13 +321,21 @@ mod app {
         let fast_boot = cx.shared.fast_boot.lock(|v| *v);
 
         *cx.local.current_state = if fast_boot {
-            checkpoint::Checkpoint::load(cx.local.peripherals).and_then(|checkpoint| checkpoint.into_current_state(cx.local.peripherals)).unwrap_or(CurrentState::POR)
+            checkpoint::Checkpoint::load(cx.local.peripherals)
+                .and_then(|checkpoint| checkpoint.into_current_state(cx.local.peripherals))
+                .unwrap_or(CurrentState::POR)
         } else {
             CurrentState::POR
         };
 
         loop {
-            dispatch_handler(cx.local.current_state, &mut stream, cx.local.peripherals, fast_boot).await;
+            dispatch_handler(
+                cx.local.current_state,
+                &mut stream,
+                cx.local.peripherals,
+                fast_boot,
+            )
+            .await;
         }
     }
 

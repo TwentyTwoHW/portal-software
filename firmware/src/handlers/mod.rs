@@ -26,7 +26,7 @@ use gui::{ConfirmBarPage, ErrorPage, MainContent, Page};
 use model::bitcoin::util::bip32;
 use model::{FwUpdateHeader, NumWordsMnemonic, Reply};
 
-use crate::{hw, hw_common, checkpoint, Error};
+use crate::{checkpoint, hw, hw_common, Error};
 
 #[allow(dead_code)]
 const GIT_HASH: &'static str = fetch_git_hash::fetch_git_hash!();
@@ -111,10 +111,11 @@ pub enum CurrentState {
         is_fast_boot: bool,
     },
     /// Request the public descriptor
-    PublicDescriptor { wallet: Rc<PortalWallet>,
+    PublicDescriptor {
+        wallet: Rc<PortalWallet>,
         resumable: checkpoint::Resumable,
         is_fast_boot: bool,
-     },
+    },
     /// Request to set a new descriptor
     SetDescriptor {
         wallet: Rc<PortalWallet>,
@@ -134,7 +135,10 @@ pub enum CurrentState {
         encryption_key: [u8; 24],
     },
     /// Updating firmware
-    UpdatingFw { header: FwUpdateHeader, fast_boot: Option<(checkpoint::FwUpdateState, [u8; 24])> },
+    UpdatingFw {
+        header: FwUpdateHeader,
+        fast_boot: Option<(checkpoint::FwUpdateState, [u8; 24])>,
+    },
     /// Error
     Error,
 }
@@ -271,15 +275,48 @@ pub async fn dispatch_handler(
             resumable,
             sig_bytes,
             encryption_key,
-        } => bitcoin::handle_confirm_sign_psbt(wallet, &outputs, fees, resumable, sig_bytes, encryption_key, events, peripherals).await,
+        } => {
+            bitcoin::handle_confirm_sign_psbt(
+                wallet,
+                &outputs,
+                fees,
+                resumable,
+                sig_bytes,
+                encryption_key,
+                events,
+                peripherals,
+            )
+            .await
+        }
         CurrentState::DisplayAddress {
             ref mut wallet,
             index,
             resumable,
             is_fast_boot,
-        } => bitcoin::handle_display_address_request(wallet, index, resumable, is_fast_boot, events, peripherals).await,
-        CurrentState::PublicDescriptor { ref mut wallet, resumable, is_fast_boot } => {
-            bitcoin::handle_public_descriptor_request(wallet, resumable, is_fast_boot, events, peripherals).await
+        } => {
+            bitcoin::handle_display_address_request(
+                wallet,
+                index,
+                resumable,
+                is_fast_boot,
+                events,
+                peripherals,
+            )
+            .await
+        }
+        CurrentState::PublicDescriptor {
+            ref mut wallet,
+            resumable,
+            is_fast_boot,
+        } => {
+            bitcoin::handle_public_descriptor_request(
+                wallet,
+                resumable,
+                is_fast_boot,
+                events,
+                peripherals,
+            )
+            .await
         }
         CurrentState::SetDescriptor {
             ref mut wallet,
@@ -308,8 +345,19 @@ pub async fn dispatch_handler(
             derivation_path,
             resumable,
             is_fast_boot,
-            encryption_key
-        } => bitcoin::handle_get_xpub_request(wallet, derivation_path, resumable, is_fast_boot, encryption_key, events, peripherals).await,
+            encryption_key,
+        } => {
+            bitcoin::handle_get_xpub_request(
+                wallet,
+                derivation_path,
+                resumable,
+                is_fast_boot,
+                encryption_key,
+                events,
+                peripherals,
+            )
+            .await
+        }
         CurrentState::UpdatingFw { header, fast_boot } => {
             fwupdate::handle_begin_fw_update(&header, fast_boot, events, peripherals).await
         }
@@ -379,15 +427,22 @@ async fn manage_confirmation_loop_with_checkpoint<'s, C: MainContent>(
 ) -> Result<(), crate::Error> {
     page.add_confirm(state.progress);
 
-    manage_confirmation_loop_with_callback(events, peripherals, page, |peripherals, progress, ticks| {
-        if let Some(resumable) = &mut checkpoint.resumable {
-            resumable.page = state.page;
-            resumable.progress = progress;
-            resumable.ticks = ticks;
+    manage_confirmation_loop_with_callback(
+        events,
+        peripherals,
+        page,
+        |peripherals, progress, ticks| {
+            if let Some(resumable) = &mut checkpoint.resumable {
+                resumable.page = state.page;
+                resumable.progress = progress;
+                resumable.ticks = ticks;
 
-            checkpoint.commit_registers(&peripherals.rtc);
-        }
-    }, state.ticks).await
+                checkpoint.commit_registers(&peripherals.rtc);
+            }
+        },
+        state.ticks,
+    )
+    .await
 }
 
 async fn manage_confirmation_loop_with_callback<'s, C: MainContent>(

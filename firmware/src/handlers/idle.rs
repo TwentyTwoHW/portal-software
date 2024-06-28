@@ -100,7 +100,10 @@ pub async fn handle_idle(
                 });
             }
             Some(model::Request::BeginFwUpdate(header)) => {
-                break Ok(CurrentState::UpdatingFw { header, fast_boot: None });
+                break Ok(CurrentState::UpdatingFw {
+                    header,
+                    fast_boot: None,
+                });
             }
             Some(_) => {
                 peripherals

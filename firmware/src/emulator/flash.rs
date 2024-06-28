@@ -40,7 +40,10 @@ impl<'s> UnlockedFlash<'s> {
     }
 
     pub fn erase_page(&self, page: FlashPage) -> Result<(), ()> {
-        self.flash.write(page.to_address() as u16, &alloc::vec![0xFF; crate::hw_common::PAGE_SIZE]);
+        self.flash.write(
+            page.to_address() as u16,
+            &alloc::vec![0xFF; crate::hw_common::PAGE_SIZE],
+        );
         Ok(())
     }
 

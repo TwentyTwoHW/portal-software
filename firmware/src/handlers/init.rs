@@ -239,26 +239,33 @@ impl TryIntoCurrentState for Config {
                 let fast_boot_key = crate::checkpoint::get_fastboot_key(&rtc);
                 match initialized.try_unlock_fast_boot(&fast_boot_key) {
                     Ok(unlock) => unlock,
-                    Err(_) => return Ok(CurrentState::Locked {
-                        config: initialized,
-                    })
+                    Err(_) => {
+                        return Ok(CurrentState::Locked {
+                            config: initialized,
+                        })
+                    }
                 }
-            },
-            Config::Unverified(unverified) => return Ok(CurrentState::UnverifiedConfig { config: unverified }),
+            }
+            Config::Unverified(unverified) => {
+                return Ok(CurrentState::UnverifiedConfig { config: unverified })
+            }
         };
 
-        let xprv = config.secret.cached_xprv.as_xprv().map_err(map_err_config)?;
+        let xprv = config
+            .secret
+            .cached_xprv
+            .as_xprv()
+            .map_err(map_err_config)?;
         Ok(CurrentState::Idle {
-            wallet: Rc::new(make_wallet_from_xprv(
-                xprv,
-                config.network,
-                config,
-            )?),
+            wallet: Rc::new(make_wallet_from_xprv(xprv, config.network, config)?),
         })
     }
 }
 
-pub async fn handle_por(peripherals: &mut HandlerPeripherals, fast_boot: bool) -> Result<CurrentState, Error> {
+pub async fn handle_por(
+    peripherals: &mut HandlerPeripherals,
+    fast_boot: bool,
+) -> Result<CurrentState, Error> {
     if !fast_boot {
         let page = LoadingPage::new();
         page.init_display(&mut peripherals.display)?;
@@ -358,7 +365,10 @@ pub async fn handle_init(
             }
             #[cfg(feature = "emulator")]
             Some(model::Request::BeginFwUpdate(header)) => {
-                break Ok(CurrentState::UpdatingFw { header, fast_boot: None });
+                break Ok(CurrentState::UpdatingFw {
+                    header,
+                    fast_boot: None,
+                });
             }
             Some(_) => {
                 peripherals

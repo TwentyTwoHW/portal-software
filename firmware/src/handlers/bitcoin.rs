@@ -33,8 +33,8 @@ use bdk::miniscript::{DescriptorPublicKey, ForEachKey};
 use bdk::HdKeyPaths;
 
 use gui::{
-    GenericTwoLinePage, LoadingPage, Page, ShowScrollingAddressPage, SummaryPage,
-    TxOutputPage, TxSummaryPage,
+    GenericTwoLinePage, LoadingPage, Page, ShowScrollingAddressPage, SummaryPage, TxOutputPage,
+    TxSummaryPage,
 };
 use model::{
     DescriptorVariant, ExtendedKey, MultisigKey, ScriptType, SerializedDerivationPath,
@@ -141,7 +141,11 @@ pub async fn handle_sign_request(
         .fold(0, |sum, utxo| sum + utxo.value);
     let fees = total_input_value.checked_sub(total_output_value).unwrap();
 
-    let outputs = psbt.unsigned_tx.output.iter().zip(psbt.outputs.iter())
+    let outputs = psbt
+        .unsigned_tx
+        .output
+        .iter()
+        .zip(psbt.outputs.iter())
         .filter_map(|(out, psbt_out)| {
             if wallet
                 .get_descriptor_for_keychain(bdk::KeychainKind::Internal)
@@ -191,10 +195,22 @@ pub async fn handle_sign_request(
     };
     let aux_data = minicbor::to_vec(&sign_state).expect("Encoding works");
     let resumable = checkpoint::Resumable::fresh();
-    let checkpoint = checkpoint::Checkpoint::new(checkpoint::CheckpointVariant::SignPsbt, Some(aux_data), Some(resumable), &mut peripherals.rng);
+    let checkpoint = checkpoint::Checkpoint::new(
+        checkpoint::CheckpointVariant::SignPsbt,
+        Some(aux_data),
+        Some(resumable),
+        &mut peripherals.rng,
+    );
     checkpoint.commit(peripherals)?;
 
-    Ok(CurrentState::ConfirmSignPsbt { wallet: Rc::clone(wallet), outputs: sign_state.outputs, fees, sig_bytes, encryption_key: (*checkpoint.encryption_key).into(), resumable, })
+    Ok(CurrentState::ConfirmSignPsbt {
+        wallet: Rc::clone(wallet),
+        outputs: sign_state.outputs,
+        fees,
+        sig_bytes,
+        encryption_key: (*checkpoint.encryption_key).into(),
+        resumable,
+    })
 }
 
 pub async fn handle_confirm_sign_psbt(
@@ -210,7 +226,12 @@ pub async fn handle_confirm_sign_psbt(
     log::info!("handle_confirm_sign_psbt");
 
     peripherals.tsc_enabled.enable();
-    let mut checkpoint = checkpoint::Checkpoint::new_with_key(checkpoint::CheckpointVariant::SignPsbt, None, Some(resumable), encryption_key.clone());
+    let mut checkpoint = checkpoint::Checkpoint::new_with_key(
+        checkpoint::CheckpointVariant::SignPsbt,
+        None,
+        Some(resumable),
+        encryption_key.clone(),
+    );
 
     for ((address, value), state, draw) in resumable.wrap_iter(outputs.iter()) {
         let value = Amount::from_sat(*value);
@@ -222,7 +243,14 @@ pub async fn handle_confirm_sign_psbt(
             peripherals.display.flush()?;
         }
 
-        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+        manage_confirmation_loop_with_checkpoint(
+            &mut events,
+            peripherals,
+            &mut page,
+            &mut checkpoint,
+            state,
+        )
+        .await?;
     }
 
     if let Some((state, draw)) = resumable.single_page_with_offset(outputs.len()) {
@@ -233,7 +261,14 @@ pub async fn handle_confirm_sign_psbt(
             peripherals.display.flush()?;
         }
 
-        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+        manage_confirmation_loop_with_checkpoint(
+            &mut events,
+            peripherals,
+            &mut page,
+            &mut checkpoint,
+            state,
+        )
+        .await?;
     }
 
     #[rustfmt::skip]
@@ -308,7 +343,12 @@ pub async fn handle_display_address_request(
 ) -> Result<CurrentState, Error> {
     log::info!("handle_display_address_request");
 
-    let mut checkpoint = checkpoint::Checkpoint::new_with_key(checkpoint::CheckpointVariant::DisplayAddress(index), None, Some(resumable), checkpoint::Checkpoint::gen_key(&mut peripherals.rng));
+    let mut checkpoint = checkpoint::Checkpoint::new_with_key(
+        checkpoint::CheckpointVariant::DisplayAddress(index),
+        None,
+        Some(resumable),
+        checkpoint::Checkpoint::gen_key(&mut peripherals.rng),
+    );
     if !is_fast_boot {
         peripherals
             .nfc
@@ -316,7 +356,7 @@ pub async fn handle_display_address_request(
             .await
             .unwrap();
     }
- 
+
     peripherals.tsc_enabled.enable();
 
     if let Some((state, draw)) = resumable.single_page_with_offset(0) {
@@ -327,7 +367,14 @@ pub async fn handle_display_address_request(
         if draw {
             peripherals.display.flush()?;
         }
-        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+        manage_confirmation_loop_with_checkpoint(
+            &mut events,
+            peripherals,
+            &mut page,
+            &mut checkpoint,
+            state,
+        )
+        .await?;
     }
 
     let addr = Rc::get_mut(wallet)
@@ -343,7 +390,14 @@ pub async fn handle_display_address_request(
         if draw {
             peripherals.display.flush()?;
         }
-        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+        manage_confirmation_loop_with_checkpoint(
+            &mut events,
+            peripherals,
+            &mut page,
+            &mut checkpoint,
+            state,
+        )
+        .await?;
     }
 
     peripherals
@@ -368,7 +422,12 @@ pub async fn handle_public_descriptor_request(
 ) -> Result<CurrentState, Error> {
     log::info!("handle_public_descriptor_request");
 
-    let mut checkpoint = checkpoint::Checkpoint::new_with_key(checkpoint::CheckpointVariant::PublicDescriptor, None, Some(resumable), checkpoint::Checkpoint::gen_key(&mut peripherals.rng));
+    let mut checkpoint = checkpoint::Checkpoint::new_with_key(
+        checkpoint::CheckpointVariant::PublicDescriptor,
+        None,
+        Some(resumable),
+        checkpoint::Checkpoint::gen_key(&mut peripherals.rng),
+    );
     if !is_fast_boot {
         peripherals
             .nfc
@@ -376,7 +435,7 @@ pub async fn handle_public_descriptor_request(
             .await
             .unwrap();
     }
- 
+
     peripherals.tsc_enabled.enable();
 
     if let Some((state, draw)) = resumable.single_page_with_offset(0) {
@@ -386,7 +445,14 @@ pub async fn handle_public_descriptor_request(
         if draw {
             peripherals.display.flush()?;
         }
-        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+        manage_confirmation_loop_with_checkpoint(
+            &mut events,
+            peripherals,
+            &mut page,
+            &mut checkpoint,
+            state,
+        )
+        .await?;
     }
 
     let descriptor = wallet
@@ -426,8 +492,15 @@ pub async fn handle_get_xpub_request(
 ) -> Result<CurrentState, Error> {
     log::info!("handle_get_xpub_request");
 
-    let checkpoint_state = minicbor::to_vec(SerializedDerivationPath::from(derivation_path.clone())).expect("Serialization workds");
-    let mut checkpoint = checkpoint::Checkpoint::new_with_key(checkpoint::CheckpointVariant::GetXpub, Some(checkpoint_state), Some(resumable), encryption_key.clone());
+    let checkpoint_state =
+        minicbor::to_vec(SerializedDerivationPath::from(derivation_path.clone()))
+            .expect("Serialization workds");
+    let mut checkpoint = checkpoint::Checkpoint::new_with_key(
+        checkpoint::CheckpointVariant::GetXpub,
+        Some(checkpoint_state),
+        Some(resumable),
+        encryption_key.clone(),
+    );
     if !is_fast_boot {
         // Commit fully to flash only once at the start
         checkpoint.commit(peripherals)?;
@@ -453,7 +526,14 @@ pub async fn handle_get_xpub_request(
         if draw {
             peripherals.display.flush()?;
         }
-        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+        manage_confirmation_loop_with_checkpoint(
+            &mut events,
+            peripherals,
+            &mut page,
+            &mut checkpoint,
+            state,
+        )
+        .await?;
     }
 
     let derived = wallet
@@ -551,7 +631,8 @@ pub async fn handle_set_descriptor_request(
         variant: variant.clone(),
         script_type: script_type.clone(),
         bsms: bsms.clone(),
-    }).expect("Serialization works");
+    })
+    .expect("Serialization works");
 
     let checks_result = (|| -> Result<_, String> {
         let variant = match variant {
@@ -631,7 +712,12 @@ pub async fn handle_set_descriptor_request(
     };
 
     peripherals.tsc_enabled.enable();
-    let mut checkpoint = checkpoint::Checkpoint::new_with_key(checkpoint::CheckpointVariant::SetDescriptor, Some(checkpoint_state), Some(resumable), encryption_key.clone());
+    let mut checkpoint = checkpoint::Checkpoint::new_with_key(
+        checkpoint::CheckpointVariant::SetDescriptor,
+        Some(checkpoint_state),
+        Some(resumable),
+        encryption_key.clone(),
+    );
     if !is_fast_boot {
         // Commit fully to flash only once at the start
         checkpoint.commit(peripherals)?;
@@ -658,7 +744,14 @@ pub async fn handle_set_descriptor_request(
             peripherals.display.flush()?;
         }
 
-        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+        manage_confirmation_loop_with_checkpoint(
+            &mut events,
+            peripherals,
+            &mut page,
+            &mut checkpoint,
+            state,
+        )
+        .await?;
     }
     page_counter += 1;
 
@@ -679,7 +772,14 @@ pub async fn handle_set_descriptor_request(
         if draw {
             peripherals.display.flush()?;
         }
-        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+        manage_confirmation_loop_with_checkpoint(
+            &mut events,
+            peripherals,
+            &mut page,
+            &mut checkpoint,
+            state,
+        )
+        .await?;
     }
     page_counter += 1;
 
@@ -701,7 +801,14 @@ pub async fn handle_set_descriptor_request(
                 if draw {
                     peripherals.display.flush()?;
                 }
-                manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+                manage_confirmation_loop_with_checkpoint(
+                    &mut events,
+                    peripherals,
+                    &mut page,
+                    &mut checkpoint,
+                    state,
+                )
+                .await?;
             }
             page_counter += 1;
         }
@@ -721,11 +828,20 @@ pub async fn handle_set_descriptor_request(
                 if draw {
                     peripherals.display.flush()?;
                 }
-                manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+                manage_confirmation_loop_with_checkpoint(
+                    &mut events,
+                    peripherals,
+                    &mut page,
+                    &mut checkpoint,
+                    state,
+                )
+                .await?;
             }
             page_counter += 1;
 
-            for ((i, key), state, draw) in resumable.wrap_iter_with_offset(page_counter, keys.iter().enumerate()) {
+            for ((i, key), state, draw) in
+                resumable.wrap_iter_with_offset(page_counter, keys.iter().enumerate())
+            {
                 let key_name = alloc::format!("Key #{}", i + 1);
 
                 let second_line = match key {
@@ -760,7 +876,14 @@ pub async fn handle_set_descriptor_request(
                 if draw {
                     peripherals.display.flush()?;
                 }
-                manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+                manage_confirmation_loop_with_checkpoint(
+                    &mut events,
+                    peripherals,
+                    &mut page,
+                    &mut checkpoint,
+                    state,
+                )
+                .await?;
             }
             page_counter += keys.len();
         }
@@ -779,7 +902,14 @@ pub async fn handle_set_descriptor_request(
         if draw {
             peripherals.display.flush()?;
         }
-        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+        manage_confirmation_loop_with_checkpoint(
+            &mut events,
+            peripherals,
+            &mut page,
+            &mut checkpoint,
+            state,
+        )
+        .await?;
     }
     page_counter += 1;
 
@@ -790,7 +920,14 @@ pub async fn handle_set_descriptor_request(
         if draw {
             peripherals.display.flush()?;
         }
-        manage_confirmation_loop_with_checkpoint(&mut events, peripherals, &mut page, &mut checkpoint, state).await?;
+        manage_confirmation_loop_with_checkpoint(
+            &mut events,
+            peripherals,
+            &mut page,
+            &mut checkpoint,
+            state,
+        )
+        .await?;
     }
 
     let encrypted_config = new_wallet.config.clone().lock();

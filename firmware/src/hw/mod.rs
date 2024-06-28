@@ -15,11 +15,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use hal::flash::{self, Read, WriteErase};
 use hal::i2c::{self, I2c};
 use hal::prelude::*;
 use hal::rcc::{Enable, MsiFreq};
-use hal::{gpio, stm32, rtc};
-use hal::flash::{self, Read, WriteErase};
+use hal::{gpio, rtc, stm32};
 use rand::prelude::*;
 
 use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
@@ -100,16 +100,24 @@ pub fn init_peripherals(
     let mut gpioa = dp.GPIOA.split(&mut rcc.ahb2);
     let mut gpiob = dp.GPIOB.split(&mut rcc.ahb2);
 
-    let rtc = rtc::Rtc::rtc(dp.RTC, &mut rcc.apb1r1, &mut rcc.bdcr, &mut pwr.cr1, rtc::RtcConfig::default());
+    let rtc = rtc::Rtc::rtc(
+        dp.RTC,
+        &mut rcc.apb1r1,
+        &mut rcc.bdcr,
+        &mut pwr.cr1,
+        rtc::RtcConfig::default(),
+    );
     let fast_boot = rtc.read_backup_register(checkpoint::MAGIC_REGISTER) == Some(checkpoint::MAGIC);
     if !fast_boot {
         rtc.write_backup_register(checkpoint::MAGIC_REGISTER, checkpoint::MAGIC);
     }
 
     // Put display in RESET while we initialize stuff
-    let mut display_reset = gpiob
-        .pb12
-        .into_push_pull_output_in_state(&mut gpiob.moder, &mut gpiob.otyper, PinState::High);
+    let mut display_reset = gpiob.pb12.into_push_pull_output_in_state(
+        &mut gpiob.moder,
+        &mut gpiob.otyper,
+        PinState::High,
+    );
     if !fast_boot {
         display_reset.set_low();
     }
@@ -256,7 +264,17 @@ pub fn init_peripherals(
 
     let tsc = Tsc::new(tsc, channel_pin);
 
-    Ok((nt3h, nfc_interrupt, nfc_finished, display, tsc, rng, flash, rtc, fast_boot))
+    Ok((
+        nt3h,
+        nfc_interrupt,
+        nfc_finished,
+        display,
+        tsc,
+        rng,
+        flash,
+        rtc,
+        fast_boot,
+    ))
 }
 
 pub struct Flash {
@@ -264,7 +282,11 @@ pub struct Flash {
     pub fb_mode: bool,
 }
 
-pub fn read_flash<'b>(flash: &mut Flash, page: usize, buf: &'b mut [u8; 2048]) -> Result<&'b [u8], FlashError> {
+pub fn read_flash<'b>(
+    flash: &mut Flash,
+    page: usize,
+    buf: &'b mut [u8; 2048],
+) -> Result<&'b [u8], FlashError> {
     let flash = &mut flash.parts;
 
     let prog = flash.keyr.unlock_flash(&mut flash.sr, &mut flash.cr)?;

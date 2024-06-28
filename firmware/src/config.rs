@@ -15,7 +15,6 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-
 use model::Config;
 
 use crate::hw::{Flash, FlashError};
@@ -34,4 +33,3 @@ pub fn write_config(flash: &mut Flash, config: &Config) -> Result<(), FlashError
     let serialized = minicbor::to_vec(config).expect("always succeed");
     crate::hw::write_flash(flash, CONFIG_PAGE, &serialized)
 }
-
