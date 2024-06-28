@@ -21,7 +21,7 @@ use model::Config;
 use crate::hw::{Flash, FlashError};
 use crate::hw_common::PAGE_SIZE;
 
-const CONFIG_PAGE: usize = 255;
+pub const CONFIG_PAGE: usize = 255;
 
 pub fn read_config(flash: &mut Flash) -> Result<Config, FlashError> {
     let mut buf = [0u8; PAGE_SIZE];

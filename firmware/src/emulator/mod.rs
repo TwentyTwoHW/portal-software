@@ -24,6 +24,7 @@ use cortex_m::interrupt::{free, Mutex};
 use stm32f4xx_hal::prelude::*;
 use stm32f4xx_hal::serial;
 
+pub mod flash;
 pub mod hw;
 
 static SERIAL: Mutex<RefCell<Option<serial::Serial<hal::pac::USART1>>>> =

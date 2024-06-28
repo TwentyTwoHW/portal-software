@@ -26,6 +26,8 @@ use rtic_monotonics::systick::ExtU32;
 
 #[cfg(feature = "device")]
 use stm32l4xx_hal::{flash, flash::Read, flash::WriteErase, stm32};
+#[cfg(feature = "emulator")]
+use crate::emulator::flash;
 
 use bitcoin_hashes::{sha256, Hash, HashEngine};
 
@@ -56,7 +58,7 @@ const CHECKPOINT_PAGE_INTERVAL: usize = 4;
 #[cfg(feature = "device")]
 type UnlockedFlash<'a> = flash::FlashProgramming<'a>;
 #[cfg(feature = "emulator")]
-type UnlockedFlash = ();
+type UnlockedFlash<'a> = crate::emulator::flash::UnlockedFlash<'a>;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct BankToFlash {
@@ -68,7 +70,6 @@ impl BankToFlash {
         BankToFlash { physical }
     }
 
-    #[cfg(feature = "device")]
     fn physical_bank_page(bank: FlashBank, page: usize) -> flash::FlashPage {
         match bank {
             FlashBank::Bank1 => flash::FlashPage(page),
@@ -76,7 +77,6 @@ impl BankToFlash {
         }
     }
 
-    #[cfg(feature = "device")]
     fn get_logical_address(&self, which: BankStatus, page: usize) -> usize {
         let physical_bank = match which {
             BankStatus::Active => FlashBank::Bank1,
@@ -85,7 +85,6 @@ impl BankToFlash {
         Self::physical_bank_page(physical_bank, page).to_address()
     }
 
-    #[cfg(feature = "device")]
     fn get_physical_page(&self, which: BankStatus, page: usize) -> flash::FlashPage {
         let physical_bank = match which {
             BankStatus::Active => self.physical.opposite(),
@@ -158,14 +157,12 @@ struct FwUpdater<'h> {
 }
 
 impl<'h> FwUpdater<'h> {
-    #[allow(unused_variables)]
     fn new(
         flash: &mut UnlockedFlash,
         header: &'h FwUpdateHeader,
         state: Option<checkpoint::FwUpdateState>,
         bank_to_flash: BankToFlash,
     ) -> Result<Self, Error> {
-        #[cfg(feature = "device")]
         let checkpoint: Option<Checkpoint> = {
             if let Some(state) = state {
                 Some(Checkpoint {
@@ -193,8 +190,6 @@ impl<'h> FwUpdater<'h> {
                 }
             }
         };
-        #[cfg(feature = "emulator")]
-        let checkpoint: Option<Checkpoint> = None;
 
         let checkpoint = checkpoint.and_then(|ckpt| {
             // Verify we are still talking about the same FW
@@ -269,29 +264,31 @@ impl<'h> FwUpdater<'h> {
                 });
                 wait();
             }
+            #[cfg(feature = "emulator")]
+            {
+                let _ = match bank_to_flash.physical {
+                    FlashBank::Bank1 => flash.mass_erase(0),
+                    FlashBank::Bank2 => flash.mass_erase(1),
+                };
+            }
 
             log::debug!("Mass-erase finished!");
-        }
-
-        #[cfg(feature = "device")]
-        {
-            const CONFIG_PAGE: usize = 255;
 
             let mut buf = alloc::vec![0x00; hw_common::PAGE_SIZE];
             flash.read(
-                bank_to_flash.get_logical_address(BankStatus::Active, CONFIG_PAGE),
+                bank_to_flash.get_logical_address(BankStatus::Active, crate::config::CONFIG_PAGE),
                 &mut buf,
             );
 
             flash
-                .erase_page(bank_to_flash.get_physical_page(BankStatus::Spare, CONFIG_PAGE))
+                .erase_page(bank_to_flash.get_physical_page(BankStatus::Spare, crate::config::CONFIG_PAGE))
                 .map_err(|_| Error::FlashError)?;
             flash
                 .write(
-                    bank_to_flash.get_logical_address(BankStatus::Spare, CONFIG_PAGE),
+                    bank_to_flash.get_logical_address(BankStatus::Spare, crate::config::CONFIG_PAGE),
                     &buf,
                 )
-                .map_err(|e| Error::FlashError)?;
+                .map_err(|_| Error::FlashError)?;
             log::debug!("Configuration copied successfully");
         }
 
@@ -307,7 +304,6 @@ impl<'h> FwUpdater<'h> {
         })
     }
 
-    #[cfg(feature = "device")]
     fn save_checkpoint(&self, flash: &mut UnlockedFlash) -> Result<(), Error> {
         let checkpoint = Checkpoint {
             first_page_midstate: self.header.first_page_midstate.clone(),
@@ -338,38 +334,45 @@ impl<'h> FwUpdater<'h> {
         Ok(())
     }
 
-    #[cfg_attr(feature = "emulator", allow(unused_variables))]
+    fn save_fastboot_checkpoint(&self, fb_key: [u8; 24], rtc: &mut crate::hw::Rtc) {
+        let state = checkpoint::FwUpdateState {
+            next_page: self.page,
+            midstate: Box::new(ByteArray::from(self.hash.midstate().into_inner())),
+            tail: self.tail,
+        };
+        let fb_checkpoint = checkpoint::Checkpoint::new_with_key(checkpoint::CheckpointVariant::UpdateFirmware { state }, None, None, fb_key);
+        fb_checkpoint.commit_registers(rtc);
+    }
+
     fn chunk(&mut self, flash: &mut UnlockedFlash, data: &[u8], rtc: &mut crate::hw::Rtc, fb_key: &[u8; 24]) -> Result<(), Error> {
-        if self.page * hw_common::PAGE_SIZE + data.len() > self.header.size {
+        if self.page * hw_common::PAGE_SIZE > self.header.size {
             return Err(Error::InvalidFirmware);
         }
 
         log::debug!("Writing page {}...", self.page);
+        log::debug!("Content: {:02X?}", &data[..32]);
 
-        #[cfg(feature = "device")]
-        {
-            // If we are restarting from a checkpoint we don't know exactly where the previous update
-            // stopped, so we may be rewriting over existing pages. Make sure to individually erase the
-            // next `CHECKPOINT_PAGE_INTERVAL` pages before writing to them
-            match self.erase_window_start {
-                Some(x) if self.page < x + CHECKPOINT_PAGE_INTERVAL => {
-                    flash
-                        .erase_page(
-                            self.bank_to_flash
-                                .get_physical_page(BankStatus::Spare, self.page),
-                        )
-                        .map_err(|_| Error::FlashError)?;
-                }
-                _ => {}
+        // If we are restarting from a checkpoint we don't know exactly where the previous update
+        // stopped, so we may be rewriting over existing pages. Make sure to individually erase the
+        // next `CHECKPOINT_PAGE_INTERVAL` pages before writing to them
+        match self.erase_window_start {
+            Some(x) if self.page < x + CHECKPOINT_PAGE_INTERVAL => {
+                flash
+                    .erase_page(
+                        self.bank_to_flash
+                            .get_physical_page(BankStatus::Spare, self.page),
+                    )
+                    .map_err(|_| Error::FlashError)?;
             }
-            flash
-                .write(
-                    self.bank_to_flash
-                        .get_logical_address(BankStatus::Spare, self.page),
-                    data,
-                )
-                .map_err(|_| Error::FlashError)?;
+            _ => {}
         }
+        flash
+            .write(
+                self.bank_to_flash
+                    .get_logical_address(BankStatus::Spare, self.page),
+                data,
+            )
+            .map_err(|_| Error::FlashError)?;
 
         log::debug!("Done!");
 
@@ -390,19 +393,12 @@ impl<'h> FwUpdater<'h> {
 
         self.tail = tail;
 
-        #[cfg(feature = "device")]
+        self.save_fastboot_checkpoint(fb_key.clone(), rtc);
+
         if self.page % CHECKPOINT_PAGE_INTERVAL == 0 {
             self.save_checkpoint(flash)?;
             log::debug!("Saved checkpoint");
         }
-
-        let state = checkpoint::FwUpdateState {
-            next_page: self.page,
-            midstate: Box::new(ByteArray::from(self.hash.midstate().into_inner())),
-            tail: self.tail,
-        };
-        let fb_checkpoint = checkpoint::Checkpoint::new_with_key(checkpoint::CheckpointVariant::UpdateFirmware { state }, None, None, fb_key.clone());
-        fb_checkpoint.commit_registers(rtc);
 
         Ok(())
     }
@@ -456,25 +452,21 @@ impl<'h> FwUpdater<'h> {
             return Err(Error::InvalidFirmware);
         }
 
-        #[cfg(feature = "device")]
-        {
-            // Write first page
-            flash
-                .erase_page(self.bank_to_flash.get_physical_page(BankStatus::Spare, 0))
-                .map_err(|_| Error::FlashError)?;
-            flash
-                .write(
-                    self.bank_to_flash.get_logical_address(BankStatus::Spare, 0),
-                    data,
-                )
-                .map_err(|_| Error::FlashError)?;
-        }
+        // Write first page
+        flash
+            .erase_page(self.bank_to_flash.get_physical_page(BankStatus::Spare, 0))
+            .map_err(|_| Error::FlashError)?;
+        flash
+            .write(
+                self.bank_to_flash.get_logical_address(BankStatus::Spare, 0),
+                data,
+            )
+            .map_err(|_| Error::FlashError)?;
 
         Ok(())
     }
 
     fn switch_and_reboot(self, flash: &mut UnlockedFlash) -> ! {
-        #[cfg(feature = "device")]
         {
             // Wipe the boot sector of the booted bank to force the switch
             let page = self.bank_to_flash.get_physical_page(BankStatus::Active, 0);
@@ -537,6 +529,7 @@ pub async fn handle_begin_fw_update(
             (Some(state), key.into())
         }
     };
+    let mut drop_next_message = state.is_some();
 
     let mut page = FwUpdateProgressPage::new(header.size as u32);
     page.init_display(&mut peripherals.display)?;
@@ -557,7 +550,7 @@ pub async fn handle_begin_fw_update(
         )
         .map_err(|_| Error::FlashError)?;
     #[cfg(feature = "emulator")]
-    let mut lock = ();
+    let mut lock = peripherals.flash.unlock();
 
     let bank_to_flash = match peripherals.flash.fb_mode {
         false => FlashBank::Bank2,
@@ -569,17 +562,24 @@ pub async fn handle_begin_fw_update(
     page.draw_to(&mut peripherals.display)?;
     peripherals.display.flush()?;
 
-    peripherals
-        .nfc
-        .send(model::Reply::NextPage(updater.page))
-        .await
-        .unwrap();
-    peripherals.nfc_finished.recv().await.unwrap();
+    if !drop_next_message {
+        // Re-request page if we are not resuming via fastboot
+        peripherals
+            .nfc
+            .send(model::Reply::NextPage(updater.page))
+            .await
+            .unwrap();
+        peripherals.nfc_finished.recv().await.unwrap();
+    }
 
     loop {
         match events.next().await {
             Some(model::Request::FwUpdateChunk(data)) => {
-                updater.chunk(&mut lock, data.deref().deref(), &mut peripherals.rtc, &fb_key)?;
+                if !drop_next_message {
+                    updater.chunk(&mut lock, data.deref().deref(), &mut peripherals.rtc, &fb_key)?;
+                } else {
+                    drop_next_message = false;
+                }
                 peripherals
                     .nfc
                     .send(model::Reply::NextPage(updater.page))

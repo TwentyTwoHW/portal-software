@@ -394,7 +394,13 @@ impl Flash {
     fn new() -> Self {
         Flash {
             channel: RefCell::new(None),
-            fb_mode: true,
+            fb_mode: false,
+        }
+    }
+
+    pub fn unlock<'s>(&'s self) -> super::flash::UnlockedFlash<'s> {
+        super::flash::UnlockedFlash {
+            flash: self
         }
     }
 
@@ -455,7 +461,7 @@ pub fn read_flash<'b>(flash: &mut Flash, page: usize, buf: &'b mut [u8; 2048]) -
     let len = core::cmp::min(u16::from_be_bytes(data[..2].try_into().unwrap()) as usize, crate::hw_common::PAGE_SIZE - 2);
     buf[..len].copy_from_slice(&data[2..2+len]);
 
-    Ok(buf.as_slice())
+    Ok(&buf[..len])
 }
 
 pub fn write_flash(flash: &mut Flash, page: usize, serialized: &[u8]) -> Result<(), FlashError> {
