@@ -25,6 +25,11 @@ use cortex_m::peripheral::NVIC;
 #[cfg(feature = "device")]
 use hal::interrupt;
 
+#[cfg(feature = "emulator")]
+use crate::emulator::flash;
+#[cfg(feature = "device")]
+use stm32l4xx_hal::flash;
+
 pub type ChannelSender<T> = rtic_sync::channel::Sender<'static, T, 1>;
 pub type ChannelReceiver<T> = rtic_sync::channel::Receiver<'static, T, 1>;
 
@@ -74,5 +79,75 @@ impl TscEnable {
     }
     pub fn disable(&self) {
         *self.bool_ref.borrow_mut() = false;
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct BankToFlash {
+    pub physical: FlashBank,
+}
+
+impl BankToFlash {
+    pub fn new(physical: FlashBank) -> Self {
+        BankToFlash { physical }
+    }
+
+    pub fn physical_bank_page(bank: FlashBank, page: usize) -> flash::FlashPage {
+        match bank {
+            FlashBank::Bank1 => flash::FlashPage(page),
+            FlashBank::Bank2 => flash::FlashPage(page + 256),
+        }
+    }
+
+    pub fn get_logical_address(&self, which: BankStatus, page: usize) -> usize {
+        let physical_bank = match which {
+            BankStatus::Active => FlashBank::Bank1,
+            BankStatus::Spare => FlashBank::Bank2,
+        };
+        Self::physical_bank_page(physical_bank, page).to_address()
+    }
+
+    pub fn get_physical_page(&self, which: BankStatus, page: usize) -> flash::FlashPage {
+        let physical_bank = match which {
+            BankStatus::Active => self.physical.opposite(),
+            BankStatus::Spare => self.physical,
+        };
+        Self::physical_bank_page(physical_bank, page)
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum BankStatus {
+    Active,
+    Spare,
+}
+
+/// Flash bank to target for a read/write/erase operation
+///
+/// **NOTE**: unfortunately the meaning of `Bank1` and `Bank2` is not always consistent
+/// in the code: specifically, when peforming an erase operation the `FlashBank` refers
+/// to the actual physical bank being erased, no matter what bank is booted at the moment.
+///
+/// When performing a read or write operation `Bank1` refers to the currently-booted bank,
+/// while `Bank2` refers to the spare bank. This is because the stm32l4xx-hal crate writes
+/// directly to the flash memory address, and when using dual bank boot the "current bank"
+/// is always mapped at 0x0000_0000 and 0x0800_0000, independently of which physical bank
+/// is backing it.
+///
+/// A good rule of thumb is that when an API takes an address it uses the "relative",
+/// mapping-dependent bank, while when it takes a `FlashPage` it's probably using absolute
+/// addressing.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum FlashBank {
+    Bank1,
+    Bank2,
+}
+
+impl FlashBank {
+    pub fn opposite(&self) -> Self {
+        match self {
+            FlashBank::Bank1 => FlashBank::Bank2,
+            FlashBank::Bank2 => FlashBank::Bank1,
+        }
     }
 }

@@ -30,6 +30,7 @@ pub mod tsc;
 use nt3h::Nt3h;
 
 use crate::checkpoint;
+use crate::hw_common;
 
 pub type AltOpenDrain<const A: u8> = gpio::Alternate<gpio::OpenDrain, A>;
 pub type AltPushPull<const A: u8> = gpio::Alternate<gpio::PushPull, A>;
@@ -84,7 +85,7 @@ pub fn init_peripherals(
     (
         NfcIc,
         NfcInterrupt,
-        crate::hw_common::ChannelReceiver<()>,
+        hw_common::ChannelReceiver<()>,
         Display,
         Tsc,
         rand_chacha::ChaCha20Rng,
@@ -295,7 +296,7 @@ pub fn read_flash<'b>(
 
     prog.read(page_to_read, buf);
     let len = u16::from_be_bytes(buf[..2].try_into().unwrap()) as usize;
-    if len >= super::hw_common::PAGE_SIZE - 2 {
+    if len >= hw_common::PAGE_SIZE - 2 {
         return Err(FlashError::CorruptedData);
     }
 
@@ -303,8 +304,16 @@ pub fn read_flash<'b>(
 }
 
 pub fn write_flash(flash: &mut Flash, page: usize, serialized: &[u8]) -> Result<(), FlashError> {
-    let flash = &mut flash.parts;
+    let running_bank = match flash.fb_mode {
+        true => hw_common::FlashBank::Bank2,
+        false => hw_common::FlashBank::Bank1,
+    };
+    let erase_page = match running_bank {
+        hw_common::FlashBank::Bank1 => page,
+        hw_common::FlashBank::Bank2 => page + 256,
+    };
 
+    let flash = &mut flash.parts;
     let mut prog = flash.keyr.unlock_flash(&mut flash.sr, &mut flash.cr)?;
 
     if serialized.len() > super::hw_common::PAGE_SIZE - 2 {
@@ -317,9 +326,9 @@ pub fn write_flash(flash: &mut Flash, page: usize, serialized: &[u8]) -> Result<
     data.extend(serialized);
     data.resize(super::hw_common::PAGE_SIZE, 0x00);
 
-    let page = flash::FlashPage(page);
-    prog.erase_page(page)?;
-    prog.write(page.to_address(), &data)?;
+    prog.erase_page(flash::FlashPage(erase_page))?;
+    let write_page = flash::FlashPage(page);
+    prog.write(write_page.to_address(), &data)?;
 
     Ok(())
 }
