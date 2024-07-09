@@ -362,7 +362,7 @@ impl Tester {
     pub async fn reset(&mut self) -> Result<(), crate::Error> {
         self.op_sender.send(TestAction::Reset(true).into()).await?;
         self.expect_reply().await?;
-        self.wait_ticks(1).await?; // Force call to manage_hw
+        self.wait_ticks(4).await?; // Force call to manage_hw
 
         Ok(())
     }
@@ -370,7 +370,7 @@ impl Tester {
     pub async fn fast_boot_reset(&mut self) -> Result<(), crate::Error> {
         self.op_sender.send(TestAction::Reset(false).into()).await?;
         self.expect_reply().await?;
-        self.wait_ticks(1).await?; // Force call to manage_hw
+        self.wait_ticks(4).await?; // Force call to manage_hw
 
         Ok(())
     }
