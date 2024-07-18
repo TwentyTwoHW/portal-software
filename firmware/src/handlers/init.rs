@@ -446,6 +446,10 @@ pub async fn handle_locked(
                     wallet: Rc::new(make_wallet_from_xprv(xprv, unlocked.network, unlocked)?),
                 });
             }
+
+            #[cfg(not(feature = "production"))]
+            Some(model::Request::WipeDevice) => break Ok(CurrentState::WipeDevice),
+
             Some(_) => {
                 peripherals.nfc.send(model::Reply::Locked).await.unwrap();
                 peripherals.nfc_finished.recv().await.unwrap();

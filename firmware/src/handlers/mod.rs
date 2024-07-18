@@ -32,6 +32,8 @@ use crate::{checkpoint, hw, hw_common, Error};
 const GIT_HASH: &'static str = fetch_git_hash::fetch_git_hash!();
 
 pub mod bitcoin;
+#[cfg(not(feature = "production"))]
+pub mod debug;
 pub mod fwupdate;
 pub mod idle;
 pub mod init;
@@ -141,6 +143,10 @@ pub enum CurrentState {
     },
     /// Error
     Error,
+
+    #[cfg(not(feature = "production"))]
+    /// Wipe device
+    WipeDevice,
 }
 
 #[derive(Debug)]
@@ -362,6 +368,9 @@ pub async fn dispatch_handler(
             fwupdate::handle_begin_fw_update(&header, fast_boot, events, peripherals).await
         }
         CurrentState::Error => Ok(handle_error(Error::Unknown, peripherals).await),
+
+        #[cfg(not(feature = "production"))]
+        CurrentState::WipeDevice => debug::wipe_device(events, peripherals).await,
     };
 
     // Save power by disabling the TSC after every handler

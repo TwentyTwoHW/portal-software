@@ -105,6 +105,10 @@ pub async fn handle_idle(
                     fast_boot: None,
                 });
             }
+
+            #[cfg(not(feature = "production"))]
+            Some(model::Request::WipeDevice) => break Ok(CurrentState::WipeDevice),
+
             Some(_) => {
                 peripherals
                     .nfc

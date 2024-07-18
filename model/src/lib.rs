@@ -1017,6 +1017,8 @@ pub enum Request {
         #[cbor(n(2))]
         bsms: Option<BsmsRound2>,
     },
+    #[cbor(n(16))]
+    WipeDevice,
 }
 
 #[derive(Clone, Debug, Encode, Decode)]

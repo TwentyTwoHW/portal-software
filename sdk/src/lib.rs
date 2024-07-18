@@ -539,6 +539,12 @@ impl PortalSdk {
     }
 
     #[cfg(feature = "debug")]
+    pub async fn debug_wipe_device(&self) -> Result<(), SdkError> {
+        send_with_retry!(self.requests, Request::WipeDevice, Ok(Reply::Ok) => break Ok(()))?;
+        Ok(())
+    }
+
+    #[cfg(feature = "debug")]
     pub async fn debug_msg(&self) -> Result<DebugMessage, SdkError> {
         Ok(self.debug_channels.recv.recv().await?)
     }
