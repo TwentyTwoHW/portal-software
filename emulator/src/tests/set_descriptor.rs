@@ -154,7 +154,7 @@ async fn test_set_descriptor_sorted_multisig_missing_key(
 fn get_self_extended_key() -> model::ExtendedKey {
     model::ExtendedKey {
             origin: Some((0x73c5da0a.into(), bip32::DerivationPath::from_str("m/48'/1'/0'/2'").unwrap().into())),
-            key: bip32::ExtendedPubKey::from_str("tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheQ").unwrap().into(),
+            key: bip32::Xpub::from_str("tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheQ").unwrap().into(),
             path: bip32::DerivationPath::from_str("m").unwrap().into(),
         }
 }

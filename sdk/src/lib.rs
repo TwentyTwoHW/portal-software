@@ -57,7 +57,7 @@ const FLASH_END: u32 = FLASH_BASE + FLASH_SIZE;
 
 #[cfg(feature = "bindings")]
 pub use model::bitcoin::{
-    util::bip32::{DerivationPath, Fingerprint},
+    bip32::{DerivationPath, Fingerprint},
     Address, Network,
 };
 
@@ -867,17 +867,40 @@ mod ffi {
 
     use super::*;
 
-    impl<T: FromStr + ToString> UniffiCustomTypeConverter for T {
+    macro_rules! impl_custom_type_converter_str {
+        ($t:ty) => {
+            impl UniffiCustomTypeConverter for $t {
+                type Builtin = String;
+
+                fn into_custom(val: Self::Builtin) -> uniffi::Result<Self> {
+                    <$t>::from_str(&val)
+                        .map_err(|_| uniffi::deps::anyhow::Error::msg("Invalid string"))
+                }
+
+                fn from_custom(obj: Self) -> Self::Builtin {
+                    obj.to_string()
+                }
+            }
+        };
+    }
+
+    impl UniffiCustomTypeConverter for Address {
         type Builtin = String;
 
         fn into_custom(val: Self::Builtin) -> uniffi::Result<Self> {
-            T::from_str(&val).map_err(|_| uniffi::deps::anyhow::Error::msg("Invalid string"))
+            model::bitcoin::Address::<model::bitcoin::address::NetworkUnchecked>::from_str(&val)
+                .map_err(|_| uniffi::deps::anyhow::Error::msg("Invalid string"))
+                .map(|a| a.assume_checked())
         }
 
         fn from_custom(obj: Self) -> Self::Builtin {
             obj.to_string()
         }
     }
+
+    impl_custom_type_converter_str!(Network);
+    impl_custom_type_converter_str!(DerivationPath);
+    impl_custom_type_converter_str!(Fingerprint);
 
     uniffi::custom_type!(Network, String);
     uniffi::custom_type!(Address, String);

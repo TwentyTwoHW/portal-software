@@ -25,7 +25,7 @@ use futures::pin_mut;
 use futures::prelude::*;
 
 use gui::{ConfirmBarPage, ErrorPage, MainContent, Page};
-use model::bitcoin::util::bip32;
+use model::bitcoin::bip32;
 use model::{FwUpdateHeader, NumWordsMnemonic, Reply};
 
 use crate::{checkpoint, hw, hw_common, Error};
@@ -41,15 +41,15 @@ pub mod idle;
 pub mod init;
 
 pub struct PortalWallet {
-    pub bdk: bdk::Wallet,
-    pub xprv: bip32::ExtendedPrivKey,
+    pub bdk: bdk_wallet::Wallet,
+    pub xprv: bip32::Xpriv,
     pub config: model::UnlockedConfig,
 }
 
 impl PortalWallet {
     pub fn new(
-        bdk: bdk::Wallet,
-        xprv: bip32::ExtendedPrivKey,
+        bdk: bdk_wallet::Wallet,
+        xprv: bip32::Xpriv,
         config: model::UnlockedConfig,
     ) -> Self {
         PortalWallet { bdk, xprv, config }
@@ -57,7 +57,7 @@ impl PortalWallet {
 }
 
 impl core::ops::Deref for PortalWallet {
-    type Target = bdk::Wallet;
+    type Target = bdk_wallet::Wallet;
     fn deref(&self) -> &Self::Target {
         &self.bdk
     }
@@ -80,13 +80,13 @@ pub enum CurrentState {
     /// Generating seed
     GenerateSeed {
         num_words: NumWordsMnemonic,
-        network: bdk::bitcoin::Network,
+        network: bdk_wallet::bitcoin::Network,
         password: Option<String>,
     },
     /// Importing seed
     ImportSeed {
         mnemonic: String,
-        network: bdk::bitcoin::Network,
+        network: bdk_wallet::bitcoin::Network,
         password: Option<String>,
     },
     /// Device ready

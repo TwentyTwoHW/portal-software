@@ -151,7 +151,7 @@ impl<'h> FwUpdater<'h> {
             }
         };
         let hash = sha256::HashEngine::from_midstate(
-            sha256::Midstate::from_inner(**midstate),
+            sha256::Midstate::from_byte_array(**midstate),
             midstate_len,
         );
 
@@ -243,7 +243,7 @@ impl<'h> FwUpdater<'h> {
             signature: self.header.signature.clone(),
             next_page: self.page,
             erase_from: Some(self.page),
-            midstate: Box::new(ByteArray::from(self.hash.midstate().into_inner())),
+            midstate: Box::new(ByteArray::from(self.hash.midstate().to_byte_array())),
             tail: self.tail,
         };
 
@@ -270,7 +270,7 @@ impl<'h> FwUpdater<'h> {
     fn save_fastboot_checkpoint(&self, fb_key: [u8; 24], rtc: &mut crate::hw::Rtc) {
         let state = checkpoint::FwUpdateState {
             next_page: self.page,
-            midstate: Box::new(ByteArray::from(self.hash.midstate().into_inner())),
+            midstate: Box::new(ByteArray::from(self.hash.midstate().to_byte_array())),
             tail: self.tail,
         };
         let fb_checkpoint = checkpoint::Checkpoint::new_with_key(
@@ -359,7 +359,7 @@ impl<'h> FwUpdater<'h> {
         let first_page_midstate = first_page_midstate.midstate();
         log::debug!("First page midstate: {:02X?}", first_page_midstate);
 
-        if first_page_midstate.deref() != header.first_page_midstate.deref().deref() {
+        if &first_page_midstate.to_byte_array() != header.first_page_midstate.deref().deref() {
             return Err(Error::InvalidFirmware);
         }
 
@@ -368,7 +368,7 @@ impl<'h> FwUpdater<'h> {
 
         let signing_key = secp256k1::XOnlyPublicKey::from_str(FIRMWARE_SIGNING_KEY)
             .expect("Valid signing pubkey");
-        let message = secp256k1::Message::from_slice(&hash).expect("Correct length");
+        let message = secp256k1::Message::from_digest_slice(hash.as_ref()).expect("Correct length");
         let signature = secp256k1::schnorr::Signature::from_slice(header.signature.deref().deref())
             .map_err(|_| Error::InvalidFirmware)?;
         let ctx = secp256k1::Secp256k1::verification_only();

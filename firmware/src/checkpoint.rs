@@ -454,6 +454,7 @@ mod cbor_bitcoin_address {
     ) -> Result<bitcoin::Address, minicbor::decode::Error> {
         let s = d.decode::<&'b str>()?;
         bitcoin::Address::from_str(s)
+            .map(|v| v.assume_checked())
             .map_err(|_| minicbor::decode::Error::message("Invalid bitcoin network").into())
     }
 

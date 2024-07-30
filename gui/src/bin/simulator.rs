@@ -168,7 +168,8 @@ fn output_page(
     let address = model::bitcoin::Address::from_str(
         "bc1q0hzrflaz2988h6zrne85tnq47k2grgarycgjrke7qje92wfxdzxq0ymtq9",
     )
-    .unwrap();
+    .unwrap()
+    .assume_checked();
     let value = model::bitcoin::Amount::from_sat(30004732);
     let mut p = TxOutputPage::new(&address, value);
 
