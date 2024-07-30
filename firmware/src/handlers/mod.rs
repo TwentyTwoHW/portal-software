@@ -15,9 +15,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::string::String;
 use core::cell::RefCell;
+use core::pin::Pin;
 
 use futures::pin_mut;
 use futures::prelude::*;
@@ -219,22 +221,29 @@ async fn wait_ticks<'s>(
     while let Some(_) = stream.next().await {}
 }
 
-pub async fn dispatch_handler(
-    current_state: &mut CurrentState,
-    events: impl Stream<Item = Event> + Unpin,
-    peripherals: &mut HandlerPeripherals,
+pub async fn dispatch_handler<'a>(
+    current_state: &'a mut CurrentState,
+    events: impl Stream<Item = Event> + Unpin + 'a,
+    peripherals: &'a mut HandlerPeripherals,
     fast_boot: bool,
 ) {
     pin_mut!(events);
 
     let mut moved_state = CurrentState::Init;
     core::mem::swap(&mut moved_state, current_state);
+
     let result = match moved_state {
-        CurrentState::POR => init::handle_por(peripherals, fast_boot).await,
-        CurrentState::Init => init::handle_init(events, peripherals).await,
-        CurrentState::Locked { config } => init::handle_locked(config, events, peripherals).await,
+        CurrentState::POR => Box::pin(init::handle_por(peripherals, fast_boot))
+            as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>,
+        CurrentState::Init => Box::pin(init::handle_init(events, peripherals))
+            as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>,
+        CurrentState::Locked { config } => {
+            Box::pin(init::handle_locked(config, events, peripherals))
+                as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>
+        }
         CurrentState::UnverifiedConfig { config } => {
-            init::handle_unverified_config(config, events, peripherals).await
+            Box::pin(init::handle_unverified_config(config, events, peripherals))
+                as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>
         }
         CurrentState::GenerateSeed {
             num_words,
@@ -247,8 +256,13 @@ pub async fn dispatch_handler(
                 .await
                 .unwrap();
 
-            init::handle_generate_seed(num_words, network, password.as_deref(), events, peripherals)
-                .await
+            Box::pin(init::handle_generate_seed(
+                num_words,
+                network,
+                password,
+                events,
+                peripherals,
+            )) as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>
         }
         CurrentState::ImportSeed {
             mnemonic,
@@ -261,19 +275,27 @@ pub async fn dispatch_handler(
                 .await
                 .unwrap();
 
-            init::handle_import_seed(&mnemonic, network, password.as_deref(), events, peripherals)
-                .await
+            Box::pin(init::handle_import_seed(
+                mnemonic,
+                network,
+                password,
+                events,
+                peripherals,
+            )) as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>
         }
         CurrentState::Idle { ref mut wallet } => {
-            idle::handle_idle(wallet, events, peripherals).await
+            Box::pin(idle::handle_idle(wallet, events, peripherals))
+                as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>
         }
-        CurrentState::WaitingForPsbt { ref mut wallet } => {
-            bitcoin::handle_waiting_for_psbt(wallet, events, peripherals).await
-        }
+        CurrentState::WaitingForPsbt { ref mut wallet } => Box::pin(
+            bitcoin::handle_waiting_for_psbt(wallet, events, peripherals),
+        )
+            as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>,
         CurrentState::SignPsbt {
             ref mut wallet,
             psbt,
-        } => bitcoin::handle_sign_request(wallet, &psbt, peripherals).await,
+        } => Box::pin(bitcoin::handle_sign_request(wallet, psbt, peripherals))
+            as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>,
         CurrentState::ConfirmSignPsbt {
             ref mut wallet,
             outputs,
@@ -281,49 +303,40 @@ pub async fn dispatch_handler(
             resumable,
             sig_bytes,
             encryption_key,
-        } => {
-            bitcoin::handle_confirm_sign_psbt(
-                wallet,
-                &outputs,
-                fees,
-                resumable,
-                sig_bytes,
-                encryption_key,
-                events,
-                peripherals,
-            )
-            .await
-        }
+        } => Box::pin(bitcoin::handle_confirm_sign_psbt(
+            wallet,
+            outputs,
+            fees,
+            resumable,
+            sig_bytes,
+            encryption_key,
+            events,
+            peripherals,
+        )) as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>,
         CurrentState::DisplayAddress {
             ref mut wallet,
             index,
             resumable,
             is_fast_boot,
-        } => {
-            bitcoin::handle_display_address_request(
-                wallet,
-                index,
-                resumable,
-                is_fast_boot,
-                events,
-                peripherals,
-            )
-            .await
-        }
+        } => Box::pin(bitcoin::handle_display_address_request(
+            wallet,
+            index,
+            resumable,
+            is_fast_boot,
+            events,
+            peripherals,
+        )) as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>,
         CurrentState::PublicDescriptor {
             ref mut wallet,
             resumable,
             is_fast_boot,
-        } => {
-            bitcoin::handle_public_descriptor_request(
-                wallet,
-                resumable,
-                is_fast_boot,
-                events,
-                peripherals,
-            )
-            .await
-        }
+        } => Box::pin(bitcoin::handle_public_descriptor_request(
+            wallet,
+            resumable,
+            is_fast_boot,
+            events,
+            peripherals,
+        )) as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>,
         CurrentState::SetDescriptor {
             ref mut wallet,
             variant,
@@ -332,46 +345,45 @@ pub async fn dispatch_handler(
             resumable,
             is_fast_boot,
             encryption_key,
-        } => {
-            bitcoin::handle_set_descriptor_request(
-                wallet,
-                variant,
-                script_type,
-                bsms,
-                resumable,
-                is_fast_boot,
-                encryption_key,
-                events,
-                peripherals,
-            )
-            .await
-        }
+        } => Box::pin(bitcoin::handle_set_descriptor_request(
+            wallet,
+            variant,
+            script_type,
+            bsms,
+            resumable,
+            is_fast_boot,
+            encryption_key,
+            events,
+            peripherals,
+        )) as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>,
         CurrentState::GetXpub {
             ref mut wallet,
             derivation_path,
             resumable,
             is_fast_boot,
             encryption_key,
-        } => {
-            bitcoin::handle_get_xpub_request(
-                wallet,
-                derivation_path,
-                resumable,
-                is_fast_boot,
-                encryption_key,
-                events,
-                peripherals,
-            )
-            .await
+        } => Box::pin(bitcoin::handle_get_xpub_request(
+            wallet,
+            derivation_path,
+            resumable,
+            is_fast_boot,
+            encryption_key,
+            events,
+            peripherals,
+        )) as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>,
+        CurrentState::UpdatingFw { header, fast_boot } => Box::pin(
+            fwupdate::handle_begin_fw_update(header, fast_boot, events, peripherals),
+        )
+            as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>,
+        CurrentState::Error => {
+            handle_error(Error::Unknown, peripherals);
         }
-        CurrentState::UpdatingFw { header, fast_boot } => {
-            fwupdate::handle_begin_fw_update(&header, fast_boot, events, peripherals).await
-        }
-        CurrentState::Error => Ok(handle_error(Error::Unknown, peripherals).await),
 
         #[cfg(not(feature = "production"))]
-        CurrentState::WipeDevice => debug::wipe_device(events, peripherals).await,
-    };
+        CurrentState::WipeDevice => Box::pin(debug::wipe_device(events, peripherals))
+            as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>,
+    }
+    .await;
 
     // Save power by disabling the TSC after every handler
     peripherals.tsc_enabled.disable();
@@ -383,11 +395,11 @@ pub async fn dispatch_handler(
 
     *current_state = match result {
         Ok(new_state) => new_state,
-        Err(e) => handle_error(e, peripherals).await,
+        Err(e) => handle_error(e, peripherals),
     }
 }
 
-async fn handle_error(err: Error, peripherals: &mut HandlerPeripherals) -> ! {
+fn handle_error(err: Error, peripherals: &mut HandlerPeripherals) -> ! {
     #[cfg(feture = "panic-log")]
     log::error!("{:?}", _err);
 

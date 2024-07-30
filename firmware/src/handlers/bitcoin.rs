@@ -90,7 +90,7 @@ impl CurrentSignatures {
 
 pub async fn handle_sign_request(
     wallet: &mut Rc<PortalWallet>,
-    psbt: &[u8],
+    psbt: Vec<u8>,
     peripherals: &mut HandlerPeripherals,
 ) -> Result<CurrentState, Error> {
     log::info!("handle_sign_request");
@@ -215,7 +215,7 @@ pub async fn handle_sign_request(
 
 pub async fn handle_confirm_sign_psbt(
     wallet: &mut Rc<PortalWallet>,
-    outputs: &[(checkpoint::CborAddress, u64)],
+    outputs: Vec<(checkpoint::CborAddress, u64)>,
     fees: u64,
     resumable: checkpoint::Resumable,
     sig_bytes: Vec<u8>,

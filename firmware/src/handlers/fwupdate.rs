@@ -423,7 +423,7 @@ impl<'h> FwUpdater<'h> {
 }
 
 pub async fn handle_begin_fw_update(
-    header: &FwUpdateHeader,
+    header: FwUpdateHeader,
     fast_boot: Option<(checkpoint::FwUpdateState, [u8; 24])>,
     mut events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
@@ -503,7 +503,7 @@ pub async fn handle_begin_fw_update(
         true => FlashBank::Bank1,
     };
     log::debug!("Flashing to bank: {:?}", bank_to_flash);
-    let mut updater = FwUpdater::new(&mut lock, header, state, BankToFlash::new(bank_to_flash))?;
+    let mut updater = FwUpdater::new(&mut lock, &header, state, BankToFlash::new(bank_to_flash))?;
     page.add_confirm((hw_common::PAGE_SIZE * updater.page) as u32); // account for the potential checkpoint
     page.draw_to(&mut peripherals.display)?;
     peripherals.display.flush()?;

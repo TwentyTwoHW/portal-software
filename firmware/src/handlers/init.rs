@@ -17,7 +17,6 @@
 
 use core::str::FromStr;
 
-use alloc::string::ToString;
 use futures::prelude::*;
 
 use rand::RngCore;
@@ -527,7 +526,7 @@ async fn save_unverified_config(
 pub async fn handle_generate_seed(
     num_words: model::NumWordsMnemonic,
     network: Network,
-    password: Option<&str>,
+    password: Option<String>,
     events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
 ) -> Result<CurrentState, Error> {
@@ -550,7 +549,7 @@ pub async fn handle_generate_seed(
             bytes: alloc::vec::Vec::from(entropy).into(),
         },
         network,
-        pair_code: password.map(ToString::to_string),
+        pair_code: password,
         descriptor,
         page: 0,
     };
@@ -559,9 +558,9 @@ pub async fn handle_generate_seed(
 }
 
 pub async fn handle_import_seed(
-    mnemonic: &str,
+    mnemonic: String,
     network: Network,
-    password: Option<&str>,
+    password: Option<String>,
     events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
 ) -> Result<CurrentState, Error> {
@@ -570,7 +569,7 @@ pub async fn handle_import_seed(
     page.draw_to(&mut peripherals.display)?;
     peripherals.display.flush()?;
 
-    let mnemonic = Mnemonic::from_str(mnemonic).map_err(map_err_config)?;
+    let mnemonic = Mnemonic::from_str(&mnemonic).map_err(map_err_config)?;
     let (entropy, len) = mnemonic.to_entropy_array();
     let entropy = &entropy[..len];
 
@@ -581,7 +580,7 @@ pub async fn handle_import_seed(
             bytes: alloc::vec::Vec::from(entropy).into(),
         },
         network,
-        pair_code: password.map(ToString::to_string),
+        pair_code: password,
         descriptor,
         page: 0,
     };
