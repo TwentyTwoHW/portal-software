@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::collections::BTreeMap;
 use alloc::rc::Rc;
 use alloc::string::ToString;
 use alloc::vec::Vec;
@@ -48,9 +48,9 @@ type SecpCtx = secp256k1::Secp256k1<secp256k1::All>;
 
 #[derive(Default)]
 struct CurrentSignatures {
-    partial_sigs: BTreeSet<PublicKey>,
+    partial_sigs: Vec<PublicKey>,
     tap_key_sig: bool,
-    tap_script_sigs: BTreeSet<(XOnlyPublicKey, taproot::TapLeafHash)>,
+    tap_script_sigs: Vec<(XOnlyPublicKey, taproot::TapLeafHash)>,
 }
 
 impl CurrentSignatures {
@@ -69,18 +69,26 @@ impl CurrentSignatures {
         psbt.inputs
             .into_iter()
             .zip(sigs.iter())
-            .map(|(mut i, s)| {
-                i.partial_sigs.retain(|k, _| !s.partial_sigs.contains(k));
-                i.tap_script_sigs
-                    .retain(|k, _| !s.tap_script_sigs.contains(k));
-
+            .map(|(i, s)| {
                 let mut input = psbt::Input::default();
-                input.partial_sigs = i.partial_sigs;
-                input.tap_script_sigs = i.tap_script_sigs;
-                input.tap_key_sig = match (i.tap_key_sig, s.tap_key_sig) {
-                    (Some(sig), false) => Some(sig),
-                    _ => None,
-                };
+
+                // We can use the binary search because `partial_sigs` and `tap_script_sigs` are populated from
+                // the original PSBT, which in turn stores everything in a BTreeSet, hence when iterating the items
+                // will always be sorted.
+                for (k, v) in i.partial_sigs {
+                    if s.partial_sigs.binary_search(&k).is_err() {
+                        input.partial_sigs.insert(k, v);
+                    }
+                }
+                for (k, v) in i.tap_script_sigs {
+                    if s.tap_script_sigs.binary_search(&k).is_err() {
+                        input.tap_script_sigs.insert(k, v);
+                    }
+                }
+
+                if !s.tap_key_sig {
+                    input.tap_key_sig = i.tap_key_sig;
+                }
 
                 input
             })
@@ -111,35 +119,30 @@ pub async fn handle_sign_request(
         bdk::miniscript::Descriptor::Tr(_)
     );
 
-    let prev_utxos = psbt
-        .unsigned_tx
-        .input
-        .iter()
-        .zip(psbt.inputs.iter())
-        .map(|(txin, input)| {
-            if let Some(prev_tx) = &input.non_witness_utxo {
-                if prev_tx.txid() == txin.previous_output.txid
-                    && prev_tx.output.len() > txin.previous_output.vout as usize
-                {
-                    Ok(&prev_tx.output[txin.previous_output.vout as usize])
-                } else {
-                    Err("Invalid non_witness_utxo")
-                }
-            } else if allow_witness_utxo && input.witness_utxo.is_some() {
-                Ok(input.witness_utxo.as_ref().unwrap())
+    let mut total_input_value = 0;
+    for (txin, input) in psbt.unsigned_tx.input.iter().zip(psbt.inputs.iter()) {
+        if let Some(prev_tx) = &input.non_witness_utxo {
+            if prev_tx.txid() == txin.previous_output.txid
+                && prev_tx.output.len() > txin.previous_output.vout as usize
+            {
+                total_input_value += prev_tx.output[txin.previous_output.vout as usize].value;
             } else {
-                Err("Missing NonWitnessUtxo")
+                return Err(Error::Message(model::MessageError::FailedDeserialization));
             }
-        })
-        .collect::<Result<alloc::vec::Vec<_>, _>>()
-        .unwrap();
-    let total_input_value = prev_utxos.iter().fold(0, |sum, utxo| sum + utxo.value);
+        } else if allow_witness_utxo && input.witness_utxo.is_some() {
+            total_input_value += input.witness_utxo.as_ref().unwrap().value;
+        } else {
+            return Err(Error::Message(model::MessageError::FailedDeserialization));
+        }
+    }
     let total_output_value = psbt
         .unsigned_tx
         .output
         .iter()
         .fold(0, |sum, utxo| sum + utxo.value);
-    let fees = total_input_value.checked_sub(total_output_value).unwrap();
+    let fees = total_input_value
+        .checked_sub(total_output_value)
+        .ok_or(model::MessageError::FailedDeserialization)?;
 
     let outputs = psbt
         .unsigned_tx
