@@ -25,10 +25,10 @@ use futures::prelude::*;
 use bdk_wallet::bitcoin::{bip32, psbt, taproot};
 use bdk_wallet::bitcoin::{Address, Amount, PublicKey, XOnlyPublicKey};
 use bdk_wallet::descriptor::{
-    DerivedDescriptor, DescriptorError, ExtendedDescriptor, TapKeyOrigins
+    DerivedDescriptor, DescriptorError, ExtendedDescriptor, TapKeyOrigins,
 };
 use bdk_wallet::keys::SinglePubKey;
-use bdk_wallet::miniscript::descriptor::{DescriptorType, InnerXKey, DescriptorXKey, Wildcard};
+use bdk_wallet::miniscript::descriptor::{DescriptorType, DescriptorXKey, InnerXKey, Wildcard};
 use bdk_wallet::miniscript::{DescriptorPublicKey, ForEachKey};
 use bdk_wallet::HdKeyPaths;
 
@@ -112,8 +112,7 @@ pub async fn handle_sign_request(
     let mut psbt = psbt::Psbt::deserialize(&psbt).unwrap();
 
     let allow_witness_utxo = matches!(
-        wallet
-            .public_descriptor(bdk_wallet::KeychainKind::External),
+        wallet.public_descriptor(bdk_wallet::KeychainKind::External),
         bdk_wallet::miniscript::Descriptor::Tr(_)
     );
 
@@ -445,12 +444,10 @@ pub async fn handle_public_descriptor_request(
         .await?;
     }
 
-    let descriptor = wallet
-        .public_descriptor(bdk_wallet::KeychainKind::External);
+    let descriptor = wallet.public_descriptor(bdk_wallet::KeychainKind::External);
     let descriptor = descriptor.to_string();
 
-    let internal_descriptor = wallet
-        .public_descriptor(bdk_wallet::KeychainKind::Internal);
+    let internal_descriptor = wallet.public_descriptor(bdk_wallet::KeychainKind::Internal);
     let internal_descriptor = internal_descriptor.to_string();
 
     peripherals
@@ -936,9 +933,7 @@ pub async fn handle_set_descriptor_request(
 pub(crate) trait DescriptorMeta {
     fn is_witness(&self) -> bool;
     fn is_taproot(&self) -> bool;
-    fn get_extended_keys(
-        &self,
-    ) -> Result<Vec<DescriptorXKey<bip32::Xpub>>, DescriptorError>;
+    fn get_extended_keys(&self) -> Result<Vec<DescriptorXKey<bip32::Xpub>>, DescriptorError>;
     fn derive_from_hd_keypaths<'s>(
         &self,
         hd_keypaths: &HdKeyPaths,
@@ -978,9 +973,7 @@ impl DescriptorMeta for ExtendedDescriptor {
         self.desc_type() == DescriptorType::Tr
     }
 
-    fn get_extended_keys(
-        &self,
-    ) -> Result<Vec<DescriptorXKey<bip32::Xpub>>, DescriptorError> {
+    fn get_extended_keys(&self) -> Result<Vec<DescriptorXKey<bip32::Xpub>>, DescriptorError> {
         let mut answer = Vec::new();
 
         self.for_each_key(|pk| {

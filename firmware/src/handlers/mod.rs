@@ -47,11 +47,7 @@ pub struct PortalWallet {
 }
 
 impl PortalWallet {
-    pub fn new(
-        bdk: bdk_wallet::Wallet,
-        xprv: bip32::Xpriv,
-        config: model::UnlockedConfig,
-    ) -> Self {
+    pub fn new(bdk: bdk_wallet::Wallet, xprv: bip32::Xpriv, config: model::UnlockedConfig) -> Self {
         PortalWallet { bdk, xprv, config }
     }
 }
