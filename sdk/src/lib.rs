@@ -30,7 +30,7 @@ use inner_logic::FutureError;
 
 use miniscript::TranslatePk;
 
-use model::bitcoin::util::bip32;
+use model::bitcoin::bip32;
 use model::{
     BsmsRound2, ExtendedKey, InitializationStatus, NumWordsMnemonic, Reply, Request, ScriptType,
     SetDescriptorVariant,
@@ -208,7 +208,7 @@ impl PortalSdk {
                 unlocked,
                 network: Some(network),
                 version: device_info.firmware_version,
-                fingerprint: fingerprint.map(|bytes| bip32::Fingerprint::from(bytes.as_slice())),
+                fingerprint: fingerprint.map(|bytes| bip32::Fingerprint::from(bytes)),
             }),
             InitializationStatus::Uninitialized => Ok(CardStatus {
                 initialized: false,
@@ -267,17 +267,15 @@ impl PortalSdk {
     pub async fn display_address(&self, index: u32) -> Result<model::bitcoin::Address, SdkError> {
         let address = send_with_retry!(self.requests, Request::DisplayAddress(index), Ok(Reply::Address(s)) => break Ok(s))?;
         let address = address
-            .parse()
+            .parse::<model::bitcoin::Address<model::bitcoin::address::NetworkUnchecked>>()
             .map_err(|_| SdkError::DeserializationError)?;
-        Ok(address)
+        Ok(address.assume_checked())
     }
 
     pub async fn sign_psbt(&self, psbt: String) -> Result<String, SdkError> {
-        use model::bitcoin::consensus::{deserialize, serialize};
-
         let psbt = base64::decode(&psbt)?;
-        let mut original_psbt: model::bitcoin::util::psbt::Psbt =
-            deserialize(&psbt).map_err(|_| SdkError::DeserializationError)?;
+        let mut original_psbt = model::bitcoin::psbt::Psbt::deserialize(&psbt)
+            .map_err(|_| SdkError::DeserializationError)?;
 
         send_with_retry!(self.requests, Request::BeginSignPsbt, Ok(Reply::Ok) => break Ok(()))?;
 
@@ -288,16 +286,15 @@ impl PortalSdk {
         let inputs =
             psbt::PortalPsbt::parse(psbt.deref()).map_err(|_| SdkError::DeserializationError)?;
         let mut psbt =
-            model::bitcoin::util::psbt::Psbt::from_unsigned_tx(original_psbt.unsigned_tx.clone())
+            model::bitcoin::psbt::Psbt::from_unsigned_tx(original_psbt.unsigned_tx.clone())
                 .expect("Valid unsigned tx");
         psbt.inputs = inputs.inputs;
 
         original_psbt
             .combine(psbt)
             .map_err(|_| SdkError::DeserializationError)?;
-        let original_psbt = serialize(&original_psbt);
 
-        Ok(base64::encode(&original_psbt))
+        Ok(base64::encode(&original_psbt.serialize()))
     }
 
     pub async fn get_xpub(&self, path: bip32::DerivationPath) -> Result<DeviceXpub, SdkError> {
@@ -327,6 +324,11 @@ impl PortalSdk {
                 DescriptorPublicKey::Single(_) => {
                     return Err(SdkError::UnsupportedDescriptor {
                         cause: "Single public keys are not supported".to_string(),
+                    })
+                }
+                DescriptorPublicKey::MultiXPub(_) => {
+                    return Err(SdkError::UnsupportedDescriptor {
+                        cause: "Multi xpubs are not supported".to_string(),
                     })
                 }
                 DescriptorPublicKey::XPub(xpub) => xpub,
@@ -371,11 +373,11 @@ impl PortalSdk {
         fn process_wsh(wsh: &Wsh<DescriptorPublicKey>) -> Result<SetDescriptorVariant, SdkError> {
             match wsh.as_inner() {
                 WshInner::Ms(Miniscript {
-                    node: miniscript::Terminal::Multi(k, pks),
+                    node: miniscript::Terminal::Multi(threshold),
                     ..
-                }) => make_multisig(*k, pks, false),
-                WshInner::SortedMulti(SortedMultiVec { k, pks, .. }) => {
-                    make_multisig(*k, pks, true)
+                }) => make_multisig(threshold.k(), threshold.data(), false),
+                WshInner::SortedMulti(sortedmulti) => {
+                    make_multisig(sortedmulti.k(), sortedmulti.pks(), true)
                 }
                 _ => {
                     return Err(SdkError::UnsupportedDescriptor {
@@ -405,8 +407,11 @@ impl PortalSdk {
                     cause: e.to_string(),
                 }
             })?;
-            let parsed = parsed.translate_pk(&mut BsmsTranslator)?;
-            println!("{}", parsed);
+            let parsed = parsed.translate_pk(&mut BsmsTranslator).map_err(|_| {
+                SdkError::InvalidDescriptor {
+                    cause: "Key translation error".into(),
+                }
+            })?;
 
             (
                 parsed.to_string(),
@@ -439,12 +444,16 @@ impl PortalSdk {
                 ),
                 ShInner::Wsh(wsh) => (process_wsh(wsh)?, ScriptType::WrappedSegwit),
                 ShInner::Ms(Miniscript {
-                    node: miniscript::Terminal::Multi(k, pks),
+                    node: miniscript::Terminal::Multi(threshold),
                     ..
-                }) => (make_multisig(*k, pks, false)?, ScriptType::Legacy),
-                ShInner::SortedMulti(SortedMultiVec { k, pks, .. }) => {
-                    (make_multisig(*k, pks, true)?, ScriptType::Legacy)
-                }
+                }) => (
+                    make_multisig(threshold.k(), threshold.data(), false)?,
+                    ScriptType::Legacy,
+                ),
+                ShInner::SortedMulti(sortedmulti) => (
+                    make_multisig(sortedmulti.k(), sortedmulti.pks(), true)?,
+                    ScriptType::Legacy,
+                ),
                 _ => {
                     return Err(SdkError::UnsupportedDescriptor {
                         cause: "Arbitrary descriptors are not supported".to_string(),
@@ -518,7 +527,7 @@ impl PortalSdk {
             variant: model::FwVariant::VANILLA,
             signature: Box::new(signature.into()),
             size: binary.len(),
-            first_page_midstate: Box::new(first_page_midstate.into_inner().into()),
+            first_page_midstate: Box::new(first_page_midstate.to_byte_array().into()),
         };
 
         let mut page = send_with_retry!(self.requests, model::Request::BeginFwUpdate(header.clone()), Ok(Reply::NextPage(page)) => break Ok(Some(page)), Ok(Reply::Ok) => break Ok(None))?;

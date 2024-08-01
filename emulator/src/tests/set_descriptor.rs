@@ -17,7 +17,7 @@
 
 use std::str::FromStr;
 
-use model::bitcoin::util::bip32;
+use model::bitcoin::bip32;
 
 use super::*;
 

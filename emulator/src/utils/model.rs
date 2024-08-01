@@ -19,6 +19,8 @@ use core::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use model::bitcoin::hex::HexToArrayError;
+
 use embedded_graphics::pixelcolor::Gray8;
 use embedded_graphics_simulator::OutputImage;
 
@@ -27,7 +29,8 @@ pub struct Entropy(pub [u8; 32]);
 
 pub fn parse_entropy(s: &str) -> Result<Entropy, String> {
     Ok(Entropy(
-        model::bitcoin::hashes::hex::FromHex::from_hex(s).map_err(|e| e.to_string())?,
+        model::bitcoin::hashes::hex::FromHex::from_hex(s)
+            .map_err(|e: HexToArrayError| e.to_string())?,
     ))
 }
 

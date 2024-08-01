@@ -22,7 +22,8 @@ use alloc::vec::Vec;
 
 use futures::prelude::*;
 
-use bdk_wallet::bitcoin::{bip32, psbt, taproot};
+use bdk_wallet::bitcoin::consensus::Encodable;
+use bdk_wallet::bitcoin::{bip32, ecdsa, psbt, taproot};
 use bdk_wallet::bitcoin::{Address, Amount, PublicKey, XOnlyPublicKey};
 use bdk_wallet::descriptor::{
     DerivedDescriptor, DescriptorError, ExtendedDescriptor, TapKeyOrigins,
@@ -65,34 +66,134 @@ impl CurrentSignatures {
             .collect()
     }
 
-    fn diff(sigs: &Vec<Self>, psbt: psbt::Psbt) -> Vec<psbt::Input> {
+    fn diff(sigs: &Vec<Self>, psbt: psbt::Psbt) -> Vec<SigsDiff> {
         psbt.inputs
             .into_iter()
             .zip(sigs.iter())
             .map(|(i, s)| {
-                let mut input = psbt::Input::default();
+                let mut sigs = SigsDiff::default();
 
                 // We can use the binary search because `partial_sigs` and `tap_script_sigs` are populated from
                 // the original PSBT, which in turn stores everything in a BTreeSet, hence when iterating the items
                 // will always be sorted.
                 for (k, v) in i.partial_sigs {
                     if s.partial_sigs.binary_search(&k).is_err() {
-                        input.partial_sigs.insert(k, v);
+                        sigs.partial_sigs.push((k, v));
                     }
                 }
                 for (k, v) in i.tap_script_sigs {
                     if s.tap_script_sigs.binary_search(&k).is_err() {
-                        input.tap_script_sigs.insert(k, v);
+                        sigs.tap_script_sigs.push((k, v));
                     }
                 }
 
                 if !s.tap_key_sig {
-                    input.tap_key_sig = i.tap_key_sig;
+                    sigs.tap_key_sig = i.tap_key_sig;
                 }
 
-                input
+                sigs
             })
             .collect()
+    }
+}
+
+#[derive(Default)]
+struct SigsDiff {
+    partial_sigs: Vec<(PublicKey, ecdsa::Signature)>,
+    tap_key_sig: Option<taproot::Signature>,
+    tap_script_sigs: Vec<((XOnlyPublicKey, taproot::TapLeafHash), taproot::Signature)>,
+}
+
+impl SigsDiff {
+    fn serialize(&self) -> Vec<u8> {
+        fn build_pair(
+            type_value: u8,
+            key: Option<&dyn SerializePsbt>,
+            value: &dyn SerializePsbt,
+        ) -> psbt::raw::Pair {
+            let key = match key {
+                Some(k) => k.serialize(),
+                None => alloc::vec![],
+            };
+            psbt::raw::Pair {
+                key: psbt::raw::Key { type_value, key },
+                value: value.serialize(),
+            }
+        }
+
+        let mut data = alloc::vec![];
+
+        for (key, val) in &self.partial_sigs {
+            data.extend(build_pair(0x02, Some(key), val).serialize());
+        }
+        if let Some(tap_key_sig) = &self.tap_key_sig {
+            data.extend(build_pair(0x13, None, tap_key_sig).serialize());
+        }
+        for (key, val) in &self.tap_script_sigs {
+            data.extend(build_pair(0x14, Some(key), val).serialize());
+        }
+
+        data.push(0x00);
+        data
+    }
+}
+
+trait SerializePsbt {
+    fn serialize(&self) -> Vec<u8>;
+}
+impl SerializePsbt for PublicKey {
+    fn serialize(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+        self.write_into(&mut buf).expect("vecs don't error");
+        buf
+    }
+}
+impl SerializePsbt for ecdsa::Signature {
+    fn serialize(&self) -> Vec<u8> {
+        self.to_vec()
+    }
+}
+impl SerializePsbt for taproot::Signature {
+    fn serialize(&self) -> Vec<u8> {
+        self.to_vec()
+    }
+}
+impl SerializePsbt for (XOnlyPublicKey, taproot::TapLeafHash) {
+    fn serialize(&self) -> Vec<u8> {
+        use model::bitcoin::hashes::Hash;
+
+        let mut buf = Vec::with_capacity(64);
+        buf.extend(self.0.serialize());
+        buf.extend(self.1.as_byte_array());
+        buf
+    }
+}
+impl SerializePsbt for psbt::raw::Key {
+    fn serialize(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+        model::bitcoin::VarInt::from(self.key.len() + 1)
+            .consensus_encode(&mut buf)
+            .expect("in-memory writers don't error");
+
+        self.type_value
+            .consensus_encode(&mut buf)
+            .expect("in-memory writers don't error");
+
+        for key in &self.key {
+            key.consensus_encode(&mut buf)
+                .expect("in-memory writers don't error");
+        }
+
+        buf
+    }
+}
+impl SerializePsbt for psbt::raw::Pair {
+    fn serialize(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+        buf.extend(self.key.serialize());
+        // <value> := <valuelen> <valuedata>
+        self.value.consensus_encode(&mut buf).unwrap();
+        buf
     }
 }
 
@@ -119,7 +220,7 @@ pub async fn handle_sign_request(
     let mut total_input_value = bitcoin::Amount::ZERO;
     for (txin, input) in psbt.unsigned_tx.input.iter().zip(psbt.inputs.iter()) {
         if let Some(prev_tx) = &input.non_witness_utxo {
-            if prev_tx.txid() == txin.previous_output.txid
+            if prev_tx.compute_txid() == txin.previous_output.txid
                 && prev_tx.output.len() > txin.previous_output.vout as usize
             {
                 total_input_value += prev_tx.output[txin.previous_output.vout as usize].value;
@@ -169,12 +270,8 @@ pub async fn handle_sign_request(
     let diff = CurrentSignatures::diff(&current_sigs, psbt);
     let mut sig_bytes = alloc::vec![];
 
-    use bdk_wallet::bitcoin::consensus::encode::Encodable;
     for input in &diff {
-        // TODO(update)!!
-        // input
-        //     .consensus_encode(&mut sig_bytes)
-        //     .expect("Encoding succeeds");
+        sig_bytes.extend(input.serialize());
     }
 
     let sign_state = checkpoint::SignPsbtState {
@@ -499,7 +596,7 @@ pub async fn handle_get_xpub_request(
     peripherals.tsc_enabled.enable();
 
     if let Some((state, draw)) = resumable.single_page_with_offset(0) {
-        let display_path = derivation_path.to_string();
+        let display_path = alloc::format!("m/{}", derivation_path);
         let mut page = GenericTwoLinePage::new(
             "Export public key?",
             &display_path,
@@ -573,7 +670,7 @@ pub async fn handle_set_descriptor_request(
         let xpub = key.key.as_xpub().map_err(|_| "Invalid xpub".to_string())?;
 
         // The network kind must match
-        if xpub.network == wallet.network().into() {
+        if xpub.network != wallet.network().into() {
             return Err("Invalid key network".to_string());
         }
 
@@ -666,7 +763,7 @@ pub async fn handle_set_descriptor_request(
             script_type,
         };
 
-        let mut new_wallet =
+        let new_wallet =
             super::init::make_wallet_from_xprv(wallet.xprv, wallet.network(), new_config)
                 .map_err(|_| "Unable to create wallet")?;
         let wallet_address = new_wallet
@@ -768,9 +865,8 @@ pub async fn handle_set_descriptor_request(
 
     match &new_wallet.config.secret.descriptor.variant {
         DescriptorVariant::SingleSig(path) => {
-            let path_display =
-                <SerializedDerivationPath as Into<bip32::DerivationPath>>::into(path.clone())
-                    .to_string();
+            let path_display: bip32::DerivationPath = path.clone().into();
+            let path_display = alloc::format!("m/{}", path_display);
 
             if let Some((state, draw)) = resumable.single_page_with_offset(page_counter) {
                 let mut page = GenericTwoLinePage::new(
@@ -830,7 +926,7 @@ pub async fn handle_set_descriptor_request(
                 let second_line = match key {
                     MultisigKey::Local(path) => {
                         alloc::format!(
-                            "This device\n{}",
+                            "This device\nm/{}",
                             <SerializedDerivationPath as Into<bip32::DerivationPath>>::into(
                                 path.clone()
                             )
@@ -843,7 +939,7 @@ pub async fn handle_set_descriptor_request(
                             .map(|(f, _)| f.clone().into())
                             .unwrap_or_else(|| key.key.as_xpub().unwrap().fingerprint());
                         alloc::format!(
-                            "Key {}\n{}",
+                            "Key {}\nm/{}",
                             fingerprint,
                             <SerializedDerivationPath as Into<bip32::DerivationPath>>::into(
                                 key.full_path()

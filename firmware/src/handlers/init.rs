@@ -31,9 +31,7 @@ use bdk_wallet::bitcoin::bip32;
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::descriptor::IntoWalletDescriptor;
 use bdk_wallet::keys::bip39::Mnemonic;
-use bdk_wallet::keys::{
-    DescriptorKey, DescriptorPublicKey, DescriptorSecretKey, ScriptContext, ValidNetworks,
-};
+use bdk_wallet::keys::{DescriptorPublicKey, DescriptorSecretKey, ValidNetworks};
 use bdk_wallet::miniscript;
 use bdk_wallet::miniscript::descriptor::{DescriptorXKey, KeyMap, Wildcard};
 

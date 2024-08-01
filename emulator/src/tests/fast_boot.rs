@@ -101,6 +101,8 @@ async fn test_resume_locked_sign_psbt(mut tester: Tester) -> Result<(), crate::E
     tester.fast_boot_reset().await?;
     tester.tsc(true).await?;
 
+    tester.wait_ticks(8).await?;
+
     tester
         .display_assertion(super::PORTAL_READY, Some(32))
         .await?;

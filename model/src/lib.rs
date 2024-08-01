@@ -37,8 +37,8 @@ use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use modular_bitfield::prelude::*;
 
 pub use bitcoin;
-use bitcoin::hashes::{sha256, Hash, HashEngine};
 use bitcoin::bip32;
+use bitcoin::hashes::{sha256, Hash, HashEngine};
 
 pub const MAX_FRAGMENT_LEN: usize = 64;
 
@@ -411,7 +411,7 @@ impl Into<bip32::Fingerprint> for SerializedFingerprint {
 impl From<bip32::Fingerprint> for SerializedFingerprint {
     fn from(value: bip32::Fingerprint) -> Self {
         SerializedFingerprint {
-            value: value.to_bytes()
+            value: value.to_bytes(),
         }
     }
 }
@@ -517,14 +517,10 @@ pub enum SetDescriptorVariant {
 }
 
 impl UnverifiedConfig {
-    pub fn upgrade(
-        self,
-        salt: [u8; 8],
-    ) -> (InitializedConfig, UnlockedConfig, bip32::Xpriv) {
+    pub fn upgrade(self, salt: [u8; 8]) -> (InitializedConfig, UnlockedConfig, bip32::Xpriv) {
         let mnemonic = bip39::Mnemonic::from_entropy(&self.entropy.bytes).expect("Valid entropy");
-        let xprv =
-            bip32::Xpriv::new_master(self.network, &mnemonic.to_seed_normalized(""))
-                .expect("Valid entropy");
+        let xprv = bip32::Xpriv::new_master(self.network, &mnemonic.to_seed_normalized(""))
+            .expect("Valid entropy");
 
         let unlocked = UnlockedConfig::new(
             self.entropy,
