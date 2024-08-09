@@ -17,7 +17,6 @@
 
 use core::str::FromStr;
 
-use alloc::string::ToString;
 use futures::prelude::*;
 
 use rand::RngCore;
@@ -28,13 +27,13 @@ use model::{
     UnverifiedConfig, WalletDescriptor,
 };
 
-use bdk::bitcoin::util::bip32;
-use bdk::bitcoin::Network;
-use bdk::descriptor::{DescriptorXKey, IntoWalletDescriptor};
-use bdk::keys::bip39::Mnemonic;
-use bdk::keys::{
-    DescriptorKey, DescriptorPublicKey, DescriptorSecretKey, ScriptContext, ValidNetworks,
-};
+use bdk_wallet::bitcoin::bip32;
+use bdk_wallet::bitcoin::Network;
+use bdk_wallet::descriptor::IntoWalletDescriptor;
+use bdk_wallet::keys::bip39::Mnemonic;
+use bdk_wallet::keys::{DescriptorPublicKey, DescriptorSecretKey, ValidNetworks};
+use bdk_wallet::miniscript;
+use bdk_wallet::miniscript::descriptor::{DescriptorXKey, KeyMap, Wildcard};
 
 use gui::{GeneratingMnemonicPage, LoadingPage, MnemonicPage, Page, WelcomePage};
 use model::{Config, DeviceInfo};
@@ -50,31 +49,32 @@ fn map_err_config<X>(_: X) -> crate::hw::FlashError {
 // Ignore the network check on each key: we fully control the network of our
 // wallet, so it should always be coherent.
 // This saves ~58KB !
-struct SkipNetworkChecks(bdk::template::DescriptorTemplateOut);
+#[derive(Clone)]
+struct SkipNetworkChecks(bdk_wallet::template::DescriptorTemplateOut);
 
 impl IntoWalletDescriptor for SkipNetworkChecks {
     fn into_wallet_descriptor(
         self,
-        _secp: &bdk::bitcoin::secp256k1::Secp256k1<bdk::bitcoin::secp256k1::All>,
+        _secp: &bdk_wallet::bitcoin::secp256k1::Secp256k1<bdk_wallet::bitcoin::secp256k1::All>,
         _network: Network,
     ) -> Result<
-        (bdk::descriptor::ExtendedDescriptor, bdk::keys::KeyMap),
-        bdk::descriptor::DescriptorError,
+        (bdk_wallet::descriptor::ExtendedDescriptor, KeyMap),
+        bdk_wallet::descriptor::DescriptorError,
     > {
         Ok((self.0 .0, self.0 .1))
     }
 }
 
-fn build_bdk_descriptor(
-    xprv: &bip32::ExtendedPrivKey,
+fn build_bdk_wallet_descriptor(
+    xprv: &bip32::Xpriv,
     descriptor: model::WalletDescriptor,
-    keychain: bdk::KeychainKind,
-) -> Result<bdk::descriptor::template::DescriptorTemplateOut, Error> {
+    keychain: bdk_wallet::KeychainKind,
+) -> Result<bdk_wallet::descriptor::template::DescriptorTemplateOut, Error> {
     fn extend_path(
         path: bip32::DerivationPath,
-        keychain: bdk::KeychainKind,
+        keychain: bdk_wallet::KeychainKind,
     ) -> bip32::DerivationPath {
-        let index = if keychain == bdk::KeychainKind::External {
+        let index = if keychain == bdk_wallet::KeychainKind::External {
             0
         } else {
             1
@@ -83,11 +83,11 @@ fn build_bdk_descriptor(
         path.extend(&[bip32::ChildNumber::Normal { index }])
     }
 
-    fn make_local_key<Ctx: ScriptContext>(
+    fn make_local_key(
         derivation_path: bip32::DerivationPath,
-        xprv: &bip32::ExtendedPrivKey,
-        keychain: bdk::KeychainKind,
-    ) -> DescriptorKey<Ctx> {
+        xprv: &bip32::Xpriv,
+        keychain: bdk_wallet::KeychainKind,
+    ) -> (DescriptorPublicKey, KeyMap) {
         let secp = secp256k1::Secp256k1::new();
 
         let split_position = derivation_path
@@ -98,27 +98,44 @@ fn build_bdk_descriptor(
         let origin_path = derivation_path[..split_position].into();
         let derivation_path = derivation_path[split_position..].into();
 
-        bdk::keys::DescriptorKey::from_secret(
-            DescriptorSecretKey::XPrv(DescriptorXKey {
-                origin: Some((xprv.fingerprint(&secp), origin_path)),
-                xkey: *xprv,
-                derivation_path: extend_path(derivation_path, keychain),
-                wildcard: bdk::descriptor::Wildcard::Unhardened,
-            }),
-            ValidNetworks::new(),
-        )
+        let secret_key = DescriptorSecretKey::XPrv(DescriptorXKey {
+            origin: Some((xprv.fingerprint(&secp), origin_path)),
+            xkey: *xprv,
+            derivation_path: extend_path(derivation_path, keychain),
+            wildcard: Wildcard::Unhardened,
+        });
+        let public_key = secret_key
+            .to_public(&secp)
+            .expect("Multi-path is never used");
+
+        let mut map = KeyMap::new();
+        map.insert(public_key.clone(), secret_key);
+
+        (public_key, map)
     }
 
     match (descriptor.variant, descriptor.script_type) {
-        (model::DescriptorVariant::SingleSig(path), ScriptType::NativeSegwit) => Ok(
-            bdk::descriptor!(wpkh(make_local_key(path.into(), xprv, keychain)))?,
-        ),
-        (model::DescriptorVariant::SingleSig(path), ScriptType::WrappedSegwit) => Ok(
-            bdk::descriptor!(sh(wpkh(make_local_key(path.into(), xprv, keychain))))?,
-        ),
-        (model::DescriptorVariant::SingleSig(path), ScriptType::Legacy) => Ok(bdk::descriptor!(
-            pkh(make_local_key(path.into(), xprv, keychain))
-        )?),
+        (model::DescriptorVariant::SingleSig(path), ScriptType::NativeSegwit) => {
+            let (public_key, key_map) = make_local_key(path.into(), xprv, keychain);
+            let descriptor = miniscript::Descriptor::Wpkh(
+                miniscript::descriptor::Wpkh::new(public_key).map_err(|_| Error::Wallet)?,
+            );
+            Ok((descriptor, key_map, ValidNetworks::new()))
+        }
+        (model::DescriptorVariant::SingleSig(path), ScriptType::WrappedSegwit) => {
+            let (public_key, key_map) = make_local_key(path.into(), xprv, keychain);
+            let descriptor = miniscript::Descriptor::Sh(
+                miniscript::descriptor::Sh::new_wpkh(public_key).map_err(|_| Error::Wallet)?,
+            );
+            Ok((descriptor, key_map, ValidNetworks::new()))
+        }
+        (model::DescriptorVariant::SingleSig(path), ScriptType::Legacy) => {
+            let (public_key, key_map) = make_local_key(path.into(), xprv, keychain);
+            let descriptor = miniscript::Descriptor::Pkh(
+                miniscript::descriptor::Pkh::new(public_key).map_err(|_| Error::Wallet)?,
+            );
+            Ok((descriptor, key_map, ValidNetworks::new()))
+        }
 
         (
             model::DescriptorVariant::MultiSig {
@@ -128,45 +145,59 @@ fn build_bdk_descriptor(
             },
             script_type,
         ) => {
-            fn get_keys_vector<Ctx: ScriptContext>(
+            fn get_keys_vector(
                 keys: alloc::vec::Vec<MultisigKey>,
-                xprv: &bip32::ExtendedPrivKey,
-                keychain: bdk::KeychainKind,
-            ) -> alloc::vec::Vec<DescriptorKey<Ctx>> {
-                keys.into_iter()
+                xprv: &bip32::Xpriv,
+                keychain: bdk_wallet::KeychainKind,
+            ) -> (KeyMap, alloc::vec::Vec<DescriptorPublicKey>) {
+                let mut global_map = KeyMap::new();
+                let keys = keys
+                    .into_iter()
                     .map(|key| match key {
                         MultisigKey::Local(path) => {
-                            make_local_key(path.clone().into(), xprv, keychain)
+                            let (public_key, mut key_map) =
+                                make_local_key(path.clone().into(), xprv, keychain);
+                            global_map.append(&mut key_map);
+
+                            public_key
                         }
                         MultisigKey::External(ExtendedKey { origin, key, path }) => {
-                            bdk::keys::DescriptorKey::from_public(
-                                DescriptorPublicKey::XPub(DescriptorXKey {
-                                    origin: origin.map(|(fingerprint, path)| {
-                                        (fingerprint.into(), path.into())
-                                    }),
-                                    xkey: key
-                                        .as_xpub()
-                                        .expect("The key was checked when setting the config"),
-                                    derivation_path: extend_path(path.into(), keychain),
-                                    wildcard: bdk::descriptor::Wildcard::Unhardened,
-                                }),
-                                ValidNetworks::new(),
-                            )
+                            DescriptorPublicKey::XPub(DescriptorXKey {
+                                origin: origin
+                                    .map(|(fingerprint, path)| (fingerprint.into(), path.into())),
+                                xkey: key
+                                    .as_xpub()
+                                    .expect("The key was checked when setting the config"),
+                                derivation_path: extend_path(path.into(), keychain),
+                                wildcard: Wildcard::Unhardened,
+                            })
                         }
                     })
-                    .collect()
+                    .collect();
+
+                assert!(global_map.len() == 1);
+
+                (global_map, keys)
             }
 
             // Unfortunately we have to duplicate this piece of code because we can't create a fragment for a "sortedmulti"
             if is_sorted {
-                let keys = get_keys_vector(keys, xprv, keychain);
+                let (key_map, keys) = get_keys_vector(keys, xprv, keychain);
 
                 match script_type {
                     ScriptType::NativeSegwit => {
-                        Ok(bdk::descriptor!(wsh(sortedmulti_vec(threshold, keys)))?)
+                        let descriptor = miniscript::Descriptor::Wsh(
+                            miniscript::descriptor::Wsh::new_sortedmulti(threshold, keys)
+                                .map_err(|_| Error::Wallet)?,
+                        );
+                        Ok((descriptor, key_map, ValidNetworks::new()))
                     }
                     ScriptType::WrappedSegwit => {
-                        Ok(bdk::descriptor!(sh(wsh(sortedmulti_vec(threshold, keys))))?)
+                        let descriptor = miniscript::Descriptor::Sh(
+                            miniscript::descriptor::Sh::new_wsh_sortedmulti(threshold, keys)
+                                .map_err(|_| Error::Wallet)?,
+                        );
+                        Ok((descriptor, key_map, ValidNetworks::new()))
                     }
                     ScriptType::Legacy => Err(Error::Config(crate::hw::FlashError::CorruptedData)),
                 }
@@ -176,15 +207,15 @@ fn build_bdk_descriptor(
                 // This adds way too much size to the binary, it needs to be investigated further...
 
                 // match script_type {
-                //     ScriptType::NativeSegwit => Ok(bdk::descriptor!(wsh(multi_vec(
+                //     ScriptType::NativeSegwit => Ok(bdk_wallet::descriptor!(wsh(multi_vec(
                 //         threshold,
                 //         get_keys_vector(keys, xprv, keychain)
                 //     )))?),
-                //     ScriptType::WrappedSegwit => Ok(bdk::descriptor!(sh(wsh(multi_vec(
+                //     ScriptType::WrappedSegwit => Ok(bdk_wallet::descriptor!(sh(wsh(multi_vec(
                 //         threshold,
                 //         get_keys_vector(keys, xprv, keychain)
                 //     ))))?),
-                //     ScriptType::Legacy => Ok(bdk::descriptor!(sh(multi_vec(
+                //     ScriptType::Legacy => Ok(bdk_wallet::descriptor!(sh(multi_vec(
                 //         threshold,
                 //         get_keys_vector(keys, xprv, keychain)
                 //     )))?),
@@ -195,22 +226,24 @@ fn build_bdk_descriptor(
 }
 
 pub(super) fn make_wallet_from_xprv(
-    xprv: bip32::ExtendedPrivKey,
+    xprv: bip32::Xpriv,
     network: Network,
     config: model::UnlockedConfig,
 ) -> Result<PortalWallet, Error> {
-    let descriptor_external = SkipNetworkChecks(build_bdk_descriptor(
+    let descriptor_external = SkipNetworkChecks(build_bdk_wallet_descriptor(
         &xprv,
         config.secret.descriptor.clone(),
-        bdk::KeychainKind::External,
+        bdk_wallet::KeychainKind::External,
     )?);
-    let descriptor_internal = SkipNetworkChecks(build_bdk_descriptor(
+    let descriptor_internal = SkipNetworkChecks(build_bdk_wallet_descriptor(
         &xprv,
         config.secret.descriptor.clone(),
-        bdk::KeychainKind::Internal,
+        bdk_wallet::KeychainKind::Internal,
     )?);
 
-    let wallet = bdk::Wallet::new(descriptor_external, Some(descriptor_internal), (), network)?;
+    let wallet = bdk_wallet::Wallet::create(descriptor_external, descriptor_internal)
+        .network(network)
+        .create_wallet_no_persist()?;
 
     Ok(PortalWallet::new(wallet, xprv, config))
 }
@@ -284,7 +317,6 @@ pub async fn handle_por(
     config.try_into_current_state(&peripherals.rtc)
 }
 
-#[cfg(feature = "device")]
 fn read_serial() -> alloc::string::String {
     const OPTION_BYTES: usize = 0x1FFF_7000;
     const SERIAL_OFFSET: usize = 4;
@@ -308,10 +340,6 @@ fn read_serial() -> alloc::string::String {
             .map(|v| v as char)
             .collect()
     }
-}
-#[cfg(feature = "emulator")]
-fn read_serial() -> alloc::string::String {
-    Default::default()
 }
 
 pub async fn handle_init(
@@ -363,7 +391,7 @@ pub async fn handle_init(
                     password,
                 });
             }
-            #[cfg(feature = "emulator")]
+            #[cfg(not(feature = "production"))]
             Some(model::Request::BeginFwUpdate(header)) => {
                 break Ok(CurrentState::UpdatingFw {
                     header,
@@ -527,7 +555,7 @@ async fn save_unverified_config(
 pub async fn handle_generate_seed(
     num_words: model::NumWordsMnemonic,
     network: Network,
-    password: Option<&str>,
+    password: Option<String>,
     events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
 ) -> Result<CurrentState, Error> {
@@ -550,7 +578,7 @@ pub async fn handle_generate_seed(
             bytes: alloc::vec::Vec::from(entropy).into(),
         },
         network,
-        pair_code: password.map(ToString::to_string),
+        pair_code: password,
         descriptor,
         page: 0,
     };
@@ -559,9 +587,9 @@ pub async fn handle_generate_seed(
 }
 
 pub async fn handle_import_seed(
-    mnemonic: &str,
+    mnemonic: String,
     network: Network,
-    password: Option<&str>,
+    password: Option<String>,
     events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
 ) -> Result<CurrentState, Error> {
@@ -570,7 +598,7 @@ pub async fn handle_import_seed(
     page.draw_to(&mut peripherals.display)?;
     peripherals.display.flush()?;
 
-    let mnemonic = Mnemonic::from_str(mnemonic).map_err(map_err_config)?;
+    let mnemonic = Mnemonic::from_str(&mnemonic).map_err(map_err_config)?;
     let (entropy, len) = mnemonic.to_entropy_array();
     let entropy = &entropy[..len];
 
@@ -581,7 +609,7 @@ pub async fn handle_import_seed(
             bytes: alloc::vec::Vec::from(entropy).into(),
         },
         network,
-        pair_code: password.map(ToString::to_string),
+        pair_code: password,
         descriptor,
         page: 0,
     };

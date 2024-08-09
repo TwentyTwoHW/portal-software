@@ -2,7 +2,7 @@
   pkgs,
   craneLib,
   rustToolchain,
-  variant ? "device",
+  production ? true
 }:
 
 let
@@ -13,9 +13,11 @@ let
     src = craneLib.path ../.;
     filter = linkerOrCargo;
   };
+  vname = if production then "production" else "development";
+  features = if production then "production" else "";
 
   commonArgs =  {
-    pname = "firmware-${variant}";
+    pname = "firmware-${vname}";
 
     inherit src;
 
@@ -45,16 +47,16 @@ let
     '';
     # strictDeps = true;
 
-    cargoExtraArgs = "-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort --target thumbv7em-none-eabihf --no-default-features --features=${variant},production -v";
-    CC_thumbv7em_none_eabihf = "clang-17";
-    CFLAGS_thumbv7em_none_eabihf = "-flto -fno-data-sections -fno-function-sections -fno-PIC -fno-stack-protector --target=thumbv7em-none-eabihf -mcpu=cortex-m4 -mthumb -I${pkgs.clang_17}/resource-root/include/ -I${pkgs.gcc-arm-embedded}/arm-none-eabi/include";
+    cargoExtraArgs = "-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort --target thumbv7em-none-eabihf --no-default-features --features=${features} -v";
+    CC_thumbv7em_none_eabihf = "clang-18";
+    CFLAGS_thumbv7em_none_eabihf = "-flto -fno-data-sections -fno-function-sections -fno-PIC -fno-stack-protector --target=thumbv7em-none-eabihf -mcpu=cortex-m4 -mthumb -I${pkgs.clang_18}/resource-root/include/ -I${pkgs.gcc-arm-embedded}/arm-none-eabi/include";
   };
   
   # Don't actually build the dummy lib beacuse we can't link without a custom linker script
   cargoArtifacts = craneLib.buildDepsOnly (commonArgs // { cargoBuildCommand = "cargoWithProfile check"; });
 in
 craneLib.buildPackage (commonArgs // {
-  pname = "portal-firmware-${variant}";
+  pname = "portal-firmware-${vname}";
 
   inherit cargoArtifacts;
 

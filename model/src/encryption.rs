@@ -72,7 +72,7 @@ impl noise_protocol::Hash for BitcoinHashesSha256 {
         self.0.input(data)
     }
     fn result(&mut self) -> Self::Output {
-        let hash = sha256::Hash::from_engine(self.0.clone()).into_inner();
+        let hash = sha256::Hash::from_engine(self.0.clone()).to_byte_array();
         Sensitive::from(From::from(hash))
     }
 }

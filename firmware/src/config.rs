@@ -17,8 +17,8 @@
 
 use model::Config;
 
+use crate::hw::PAGE_SIZE;
 use crate::hw::{Flash, FlashError};
-use crate::hw_common::PAGE_SIZE;
 
 pub const CONFIG_PAGE: usize = 255;
 

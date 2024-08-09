@@ -22,10 +22,14 @@ rand = "0.8.5"
 tokio = { version = "1.36", features = ["full"] }
 futures = "0.3"
 
+ssd1306-emulator = { path = "./ssd1306-emulator", features = ["eg-simulator"] }
+nt3h-emulator = { path = "./nt3h-emulator" }
+
 sdk = { path = "../sdk", features = ["debug"] }
 model = { path = "../model", features = ["emulator-std"] }
 
 fltk = { version = "^1.4", optional = true }
+ctrlc = { version = "3.4.4", optional = true }
 
 [build-dependencies]
 fl2rust = { version = "0.4", optional = true }
@@ -35,7 +39,7 @@ functional-test-wrapper = { path = "../functional-test-wrapper" }
 
 [features]
 default = ["gui"]
-gui = ["fltk", "fl2rust"]
+gui = ["fltk", "fl2rust", "ctrlc"]
 
 [[bin]]
 name = "gui"

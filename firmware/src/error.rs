@@ -67,18 +67,18 @@ impl From<display_interface::DisplayError> for Error {
         Error::Display(e)
     }
 }
-impl From<bdk::Error> for Error {
-    fn from(_: bdk::Error) -> Self {
-        Error::Wallet
-    }
-}
-impl<T> From<bdk::wallet::NewError<T>> for Error {
-    fn from(_: bdk::wallet::NewError<T>) -> Self {
-        Error::Wallet
-    }
-}
-impl From<bdk::descriptor::DescriptorError> for Error {
-    fn from(_: bdk::descriptor::DescriptorError) -> Self {
+// impl From<bdk_wallet::Error> for Error {
+//     fn from(_: bdk_wallet::Error) -> Self {
+//         Error::Wallet
+//     }
+// }
+// impl<T> From<bdk::wallet::NewError<T>> for Error {
+//     fn from(_: bdk::wallet::NewError<T>) -> Self {
+//         Error::Wallet
+//     }
+// }
+impl From<bdk_wallet::descriptor::DescriptorError> for Error {
+    fn from(_: bdk_wallet::descriptor::DescriptorError) -> Self {
         Error::Wallet
     }
 }

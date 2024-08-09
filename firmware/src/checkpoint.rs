@@ -23,7 +23,7 @@ use minicbor::{Decode, Encode};
 
 use model::{ByteArray, EncryptionKey, SerializedDerivationPath};
 
-use crate::hw_common::PAGE_SIZE;
+use crate::hw::PAGE_SIZE;
 use crate::{
     config::read_config,
     hw::{read_flash, write_flash, FlashError},
@@ -454,6 +454,7 @@ mod cbor_bitcoin_address {
     ) -> Result<bitcoin::Address, minicbor::decode::Error> {
         let s = d.decode::<&'b str>()?;
         bitcoin::Address::from_str(s)
+            .map(|v| v.assume_checked())
             .map_err(|_| minicbor::decode::Error::message("Invalid bitcoin network").into())
     }
 

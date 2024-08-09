@@ -22,9 +22,7 @@ use tokio::sync::mpsc;
 
 use embedded_graphics_simulator::OutputSettingsBuilder;
 
-use model::emulator::EmulatorMessage;
-
-use crate::link::{manage_hw, try_pull_msg};
+use crate::utils::manage_hw;
 
 use crate::utils::model::*;
 use crate::utils::EmulatorInstance;
@@ -34,9 +32,11 @@ mod fast_boot;
 mod init;
 mod set_descriptor;
 
+pub const WELCOME: &'static str = "iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAABSElEQVR4nO2Xiw6DIAxF6f9/dLdhn4JKDOqy3WViwAIHWuqVysM/AAAAAAAAAAAAAAAAHAJwNeFkyBPBTwGsq38DwGbPdpcmecT0fsKxZQqADKqXAwgWxas1ngUQfbHyi1W7xvMAvMcAwOgpHwAQw7icwR2YFITVm+rSNPVBDExzQTwFdrdQT6fAl8+DeRbvAgAA4KsAmOp/STwxy3kySskpVrVvoVXqYjKTosUugBa9NmuW6WK1MixNWsShhCOMvL0DFDXXOIAIgj0AplbNtQBp6KL7lrt2ACQBU56sRADbojMuyF0HAfIONKO0pyC83Ux8bQFsB6E5Ubh0+46DEHkAAAAAAAAAAICfAXBxK3VVGKzftkGvXgLw0SKumJKmcc0nbTcAuMy9DYC4dES0ie2kV28AiC5o9eq1QaiK1JcsytX16uPH8AX6witQAGMBTgAAAABJRU5ErkJggg==";
 pub const PORTAL_READY: &'static str = "iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAAAx0lEQVR4nO3V0Q6DMAhAUfn/j2bLqoUyWNqH2cTcvTgt0gOtKsfmHwAAAAAAAAAAAAAAAAAA+AZoBdN4Uef9WkZKHqvVwGTaZwC0jb//tl5fSbTfN6R1cUc8ymcwLawG2LErLL4lCoArbsDKWcsKoFduEF+vSWIHkg76QlY6EDvhBlyiApBPfCNAiqWU7MFdBIyJfi6BX/tzf7hkEwD3FLjdYbu6nxf3DbPH9ux4FU/vgT8Ksvn4GgIAAAAAAAAAAAAAAGA74AWxK4JB071edwAAAABJRU5ErkJggg==";
 pub const LOADING: &'static str = "iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAAAj0lEQVR4nO3VsQ6AIAxFUfr/H/1UsAJhYbDAcBlsKpCeaEVLmwcAAAAAAAAAAAAAAAAAAJgDyNfJ9ygHpSa/o8pNq+t+BgwF5FXr1HOpSRBAbfEOUPIzABE9MAHIkwsA7+axB9yw6wnk/jSPWwEBTSibAQR9Bd877w6cZQcR/wIAAAAAAAAAAAAAAAAACBwX0C1tQf0U+LsAAAAASUVORK5CYII=";
 pub const LOCKED: &'static str = "iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAAAfklEQVR4nO3VsQ7AIAhFUfj/j34dgFg3TVMZvC5oongSFd2aGwAAAAAAAAAAAAAAAAAAWAeo5irXZVT0XZlQe3n3Aa8NPWKNfUzUcuIvgBGnPY8CbLJ0ASJLXY1GwJVHcP4SyhufoVXl6SlE/AUAAAAAAAAAAAAAAAAA8FN7APK2WUEuePxjAAAAAElFTkSuQmCC";
+pub const REQUEST_DESCRIPTOR: &'static str = "iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAABrElEQVR4nO2Yi66DMAiG4f0f+j+ZWm6lPatztwyzmKZS+AoIdUxvvgqgAAqgAAqgAD4RAMckKA4eupAr4URQDfN07ZrBewFucofsWwB2MXv3QbmNwlMvj10rVLvMcBbLFYDmnBkAhBA2kM1674YFALnLz66yMxYgVTIF0PkzAJDlpwEe8oBLhqsBTA7EtTLT8pBDxni2+wCgvtSYkM+2/uWFYBhpojR1qxcUwHcA4GpGBKv8/wK+1j57nR8GoP0W/lSSVRGQrzRhIBO+mMVNcXYYsZ1zCABbb/uB69t+OUY5kMqPPUBWOG07+ZHKazkPANt/AkDTnYUg7OI0wGSb6AM7zudBDnRGJTVCCgxzwG1kEsfRWxB78marCwHbc2gyWAzB8kn7hb2gqx8vb0Z4VueqdswoAK2okE9IfXXNOZ+h0rZK7G/+9jTUplAK2BY0ZADt1niU7KBj+wViRYIChi5z6q1cANBdBIDuY6MH0H3PAVo9tYFf8QCYxh7wLQDKHTxgdV8KkDt5IQSahFswQhJ6iyR/N2Th02BQzNpJEv5wHaheUAAFUAA/D/AHrZmlRhwRFIgAAAAASUVORK5CYII=";
 
 pub const WPKH_EXTERNAL_DESC: &'static str = "wpkh([73c5da0a/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)#2ag6nxcd";
 pub const WPKH_INTERNAL_DESC: &'static str = "wpkh([73c5da0a/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/1/*)#mfdmwng4";
@@ -73,17 +73,11 @@ async fn run_script(
 
         let fail = match &op {
             TestOp::Action(TestAction::WaitTicks(nticks)) => {
-                let mut count = 0;
-                while count < *nticks {
-                    manage_hw(emulator, |_, _, _| {}, &mut (), false, false).await?;
-                    while let Some(_) = try_pull_msg::<()>(&mut emulator.msgs.tick)? {
-                        count += 1;
-                    }
-                }
+                tokio::time::sleep(std::time::Duration::from_millis(*nticks as u64 * 75)).await;
                 None
             }
             TestOp::Action(TestAction::Input(value)) => {
-                emulator.card.send(EmulatorMessage::Tsc(*value))?;
+                emulator.tsc.send(*value)?;
                 None
             }
             TestOp::Action(TestAction::Nfc(req)) => {
@@ -149,48 +143,42 @@ async fn run_script(
                 };
                 None
             }
-            TestOp::Action(TestAction::WipeFlash) => {
-                crate::link::wipe_flash(&mut emulator.flash, &mut emulator.card).await?;
-                None
-            }
             TestOp::Action(TestAction::Reset(wipe_registers)) => {
-                if *wipe_registers {
-                    emulator.rtc = [0; 32];
-                }
-                emulator.card.send(EmulatorMessage::Reset)?;
+                emulator.reset(*wipe_registers).await?;
                 None
             }
 
             TestOp::Assertion(TestAssertion::Display {
                 content,
-                timeout_ticks,
+                timeout_updates,
             }) => {
                 let start = std::time::Instant::now();
-                let mut tick_counter = 0;
-                let timeout = timeout_ticks.unwrap_or(16);
+                let timeout = timeout_updates.unwrap_or(64);
+                let mut update_count: usize = 0;
 
                 let expected_fb = base64::decode(content)?;
                 let expected_fb = image::load_from_memory(&expected_fb)?.to_rgb8();
 
-                loop {
-                    if manage_hw(emulator, |_, _, _| {}, &mut (), false, false).await? {
-                        // Reset counter when the display is updated
-                        tick_counter = 0;
-                    }
+                // Flush previous updates
+                manage_hw(emulator, false).await?;
 
-                    let actual_fb = emulator.display.to_rgb_output_image(&output_settings);
+                loop {
+                    update_count += manage_hw(emulator, false).await?;
+
+                    let actual_fb = emulator
+                        .display
+                        .surface
+                        .to_rgb_output_image(&output_settings);
                     if actual_fb.as_image_buffer().as_raw() == &expected_fb.as_raw().deref() {
                         break None;
                     }
 
-                    while let Some(_) = try_pull_msg::<()>(&mut emulator.msgs.tick)? {
-                        tick_counter += 1;
-                    }
-
-                    if tick_counter > timeout || start.elapsed().as_secs() > 5 {
+                    if update_count > timeout || start.elapsed().as_secs() > 5 {
+                        log::debug!("{} {}", update_count, timeout);
                         break Some(AssertionResult::WrongDisplay(
                             emulator
                                 .display
+                                .surface
                                 .to_grayscale_output_image(&output_settings)
                                 .to_base64_png()?,
                         ));
@@ -261,7 +249,10 @@ async fn run_script(
         let log_lines = std::iter::from_fn(|| emulator.logs.try_recv().ok()).collect();
         log.push(TestLogStep {
             op,
-            display: emulator.display.to_grayscale_output_image(&output_settings),
+            display: emulator
+                .display
+                .surface
+                .to_grayscale_output_image(&output_settings),
             pass,
             fail,
             log_lines,
@@ -294,6 +285,14 @@ impl Tester {
 
     async fn expect_reply(&mut self) -> Result<(), crate::Error> {
         self.res_receiver.recv().await.ok_or("No reply")??;
+        Ok(())
+    }
+
+    pub async fn release_and_press(&mut self) -> Result<(), crate::Error> {
+        self.tsc(false).await?;
+        self.wait_ticks(1).await?;
+        self.tsc(true).await?;
+
         Ok(())
     }
 
@@ -336,13 +335,13 @@ impl Tester {
     pub async fn display_assertion(
         &mut self,
         content: &str,
-        timeout_ticks: Option<usize>,
+        timeout_updates: Option<usize>,
     ) -> Result<(), crate::Error> {
         self.op_sender
             .send(
                 TestAssertion::Display {
                     content: content.to_string(),
-                    timeout_ticks,
+                    timeout_updates,
                 }
                 .into(),
             )
@@ -406,7 +405,7 @@ fn get_fw_path() -> &'static std::path::Path {
             .args(vec![
                 "build",
                 "--no-default-features",
-                "--features=emulator,emulator-fast-ticks",
+                "--features=device,emulator-fast-ticks",
                 "--profile=emulator-fast-ticks",
             ])
             .stdout(std::process::Stdio::inherit())

@@ -1,12 +1,7 @@
-{ pkgs, packages, getRust }:
+{ pkgs, packages, devShells, getRust }:
 
 let
-  qemuOnlyArm = packages.smallQemu;
-  shell = pkgs.mkShell {
-    buildInputs = with pkgs; [ cmake pkg-config qemuOnlyArm (getRust { withEmbedded = true; }) ];
-
-    CC_thumbv7em_none_eabihf = "${pkgs.gcc-arm-embedded}/bin/arm-none-eabi-gcc";
-  };
+  shell = devShells.embedded;
 in
 pkgs.dockerTools.buildNixShellImage {
   name = "portal-dev-environment";

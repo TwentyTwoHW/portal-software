@@ -1,6 +1,6 @@
 # firmware
 
-This directory contains the source code of the firmware: it's entirely written in Rust and designed to work on the STM32L476 MCU. When run on the emulator we target a slightly different MCU, the STM32F405, since the -L476 isn't supported by QEMU yet. The switch is performed by two features: enabling the `device` feature will produce a firmware for the real device, while enabling the `emulator` feature will produce a firmware for the emulator. By default the `emulator` feature is enabled, since most of the development happens there anyway.
+This directory contains the source code of the firmware: it's entirely written in Rust and designed to work on the STM32L476 MCU.
 
 ## Hardware Components
 
@@ -33,9 +33,7 @@ When writing new handlers always make sure to add them to the main `match` claus
 
 ### Hardware
 
-The `hw` module contains the code to initialize all the hardware peripherals, and exposes a "high level" interface to communicate with them (for example, to send a message via NFC or to draw something to the display). When emulating the hardware the whole `hw` module is replaced by the `emulator::hw` module, which exposes the same interface but manages the hardware peripherals in a completely different way, by proxying messages via serial to a binary running on the host outside of QEMU (see the `emulator` crate README for more).
-
-The `hw_common` module contains code which is "common" between the real (`hw`) and emulated (`emulator::hw`) code.
+The `hw` module contains the code to initialize all the hardware peripherals, and exposes a "high level" interface to communicate with them (for example, to send a message via NFC or to draw something to the display).
 
 The real hardware initialization sequence is the following:
 

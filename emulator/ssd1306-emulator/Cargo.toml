@@ -1,0 +1,24 @@
+[package]
+name = "ssd1306-emulator"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.36", features = ["io-util", "time", "net", "sync"] }
+log = "0.4"
+ssd1306 = "0.8.4"
+
+sdl2 = { version = "0.35.1", optional = true }
+embedded-graphics = { version = "0.8", optional = true }
+embedded-graphics-simulator = { version = "0.5", default-features = false, optional = true }
+
+[features]
+sdl = ["sdl2"]
+eg-simulator = ["embedded-graphics", "embedded-graphics-simulator"]
+simulator = ["tokio/rt-multi-thread", "tokio/macros"]
+
+[[bin]]
+name = "simulator"
+required-features = ["simulator", "sdl"]

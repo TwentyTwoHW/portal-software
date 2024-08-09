@@ -47,7 +47,7 @@ pub async fn handle_idle(
                     .nfc
                     .send(Reply::Info(DeviceInfo::new_unlocked_initialized(
                         wallet.network(),
-                        wallet.xprv.fingerprint(wallet.secp_ctx()).into_bytes(),
+                        wallet.xprv.fingerprint(wallet.secp_ctx()).to_bytes(),
                         env!("CARGO_PKG_VERSION"),
                     )))
                     .await

@@ -37,8 +37,8 @@ use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use modular_bitfield::prelude::*;
 
 pub use bitcoin;
+use bitcoin::bip32;
 use bitcoin::hashes::{sha256, Hash, HashEngine};
-use bitcoin::util::bip32;
 
 pub const MAX_FRAGMENT_LEN: usize = 64;
 
@@ -46,8 +46,6 @@ pub const DEFAULT_PASSWORD_ITERATIONS: usize = 1024;
 
 pub const HARDENED_FLAG: u32 = 0x80000000;
 
-#[cfg(feature = "emulator")]
-pub mod emulator;
 pub mod encryption;
 pub mod reg;
 pub mod write_buffer;
@@ -279,12 +277,12 @@ pub struct SerializedXprv {
     pub bytes: [u8; 78],
 }
 impl SerializedXprv {
-    pub fn as_xprv(&self) -> Result<bip32::ExtendedPrivKey, bitcoin::util::bip32::Error> {
-        bip32::ExtendedPrivKey::decode(&self.bytes)
+    pub fn as_xprv(&self) -> Result<bip32::Xpriv, bip32::Error> {
+        bip32::Xpriv::decode(&self.bytes)
     }
 }
-impl From<bip32::ExtendedPrivKey> for SerializedXprv {
-    fn from(value: bip32::ExtendedPrivKey) -> Self {
+impl From<bip32::Xpriv> for SerializedXprv {
+    fn from(value: bip32::Xpriv) -> Self {
         SerializedXprv {
             bytes: value.encode(),
         }
@@ -405,13 +403,13 @@ pub struct SerializedFingerprint {
 }
 impl Into<bip32::Fingerprint> for SerializedFingerprint {
     fn into(self) -> bip32::Fingerprint {
-        bip32::Fingerprint::from(self.value.as_ref())
+        bip32::Fingerprint::from(self.value)
     }
 }
 impl From<bip32::Fingerprint> for SerializedFingerprint {
     fn from(value: bip32::Fingerprint) -> Self {
         SerializedFingerprint {
-            value: value.into_bytes(),
+            value: value.to_bytes(),
         }
     }
 }
@@ -437,12 +435,12 @@ pub struct SerializedXpub {
     pub value: Box<ByteArray<78>>,
 }
 impl SerializedXpub {
-    pub fn as_xpub(&self) -> Result<bip32::ExtendedPubKey, bitcoin::util::bip32::Error> {
-        bip32::ExtendedPubKey::decode(self.value.deref().as_ref())
+    pub fn as_xpub(&self) -> Result<bip32::Xpub, bip32::Error> {
+        bip32::Xpub::decode(self.value.deref().as_ref())
     }
 }
-impl From<bip32::ExtendedPubKey> for SerializedXpub {
-    fn from(value: bip32::ExtendedPubKey) -> Self {
+impl From<bip32::Xpub> for SerializedXpub {
+    fn from(value: bip32::Xpub) -> Self {
         SerializedXpub {
             value: Box::new(value.encode().into()),
         }
@@ -517,14 +515,10 @@ pub enum SetDescriptorVariant {
 }
 
 impl UnverifiedConfig {
-    pub fn upgrade(
-        self,
-        salt: [u8; 8],
-    ) -> (InitializedConfig, UnlockedConfig, bip32::ExtendedPrivKey) {
+    pub fn upgrade(self, salt: [u8; 8]) -> (InitializedConfig, UnlockedConfig, bip32::Xpriv) {
         let mnemonic = bip39::Mnemonic::from_entropy(&self.entropy.bytes).expect("Valid entropy");
-        let xprv =
-            bip32::ExtendedPrivKey::new_master(self.network, &mnemonic.to_seed_normalized(""))
-                .expect("Valid entropy");
+        let xprv = bip32::Xpriv::new_master(self.network, &mnemonic.to_seed_normalized(""))
+            .expect("Valid entropy");
 
         let unlocked = UnlockedConfig::new(
             self.entropy,
@@ -713,11 +707,11 @@ impl Password {
 
         let mut hash = sha256::Hash::from_engine(hash);
         for _ in 0..DEFAULT_PASSWORD_ITERATIONS {
-            hash = sha256::Hash::hash(&hash);
+            hash = sha256::Hash::hash(hash.as_ref());
         }
 
         Password {
-            hash: hash.into_inner(),
+            hash: hash.to_byte_array(),
             salt,
             iterations: DEFAULT_PASSWORD_ITERATIONS,
         }
@@ -743,7 +737,7 @@ impl EncryptionKey {
         }
 
         EncryptionKey {
-            key: hash.into_inner(),
+            key: hash.to_byte_array(),
             nonce,
         }
     }
@@ -756,7 +750,7 @@ impl EncryptionKey {
         let hash = sha256::Hash::hash(key);
 
         EncryptionKey {
-            key: hash.into_inner(),
+            key: hash.to_byte_array(),
             nonce,
         }
     }
@@ -1097,13 +1091,13 @@ impl BsmsRound1 {
         ctx: &bitcoin::secp256k1::Secp256k1<bitcoin::secp256k1::All>,
     ) -> Self {
         let message = alloc::format!("BSMS {}\n{}\n{}\n{}", version, token, xpub, key_name);
-        let message = bitcoin::secp256k1::Message::from_slice(
-            bitcoin::util::misc::signed_msg_hash(&message).as_inner(),
+        let message = bitcoin::secp256k1::Message::from_digest_slice(
+            bitcoin::sign_message::signed_msg_hash(&message).as_byte_array(),
         )
         .expect("Valid data length");
 
         let signature = ctx.sign_ecdsa_recoverable(&message, &private_key);
-        let signature = bitcoin::util::misc::MessageSignature::new(signature, true);
+        let signature = bitcoin::sign_message::MessageSignature::new(signature, true);
         let signature = signature.serialize();
 
         BsmsRound1 {

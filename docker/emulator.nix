@@ -1,10 +1,10 @@
 { pkgs, packages }:
 
 let
-  qemuOnlyArm = packages.smallQemu;
+  qemuOnlyArm = packages.qemuPortal;
   firmwareOnly = pkgs.runCommand "pruneFirmwareDeps" {} ''
     mkdir -p $out/bin
-    cp ${packages.firmware-emulator}/firmware.elf $out/bin/firmware
+    cp ${packages.firmware-development}/firmware.elf $out/bin/firmware
     ${pkgs.nukeReferences}/bin/nuke-refs $out/bin/firmware
   '';
   hostname = pkgs.writeShellScriptBin "hostname" ''
@@ -32,7 +32,7 @@ pkgs.dockerTools.buildLayeredImage {
   tag = "latest";
   contents = pkgs.buildEnv {
     name = "image-root";
-    paths = [ pkgs.bash emulatorScript runVnc hostname qemuOnlyArm firmwareOnly pkgs.novnc pkgs.coreutils pkgs.xvfb-run pkgs.x11vnc pkgs.procps pkgs.gnugrep ];
+    paths = [ pkgs.bash emulatorScript runVnc hostname qemuOnlyArm firmwareOnly pkgs.gcc-arm-embedded pkgs.novnc pkgs.coreutils pkgs.xvfb-run pkgs.x11vnc pkgs.procps pkgs.gnugrep ];
     pathsToLink = [ "/bin" "/etc" "/var" ];
   };
   config = {

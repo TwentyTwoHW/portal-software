@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use model::bitcoin::consensus::Decodable;
-use model::bitcoin::util::psbt;
+use model::bitcoin::psbt;
 
 #[derive(Debug)]
 pub struct PortalPsbt {
@@ -42,7 +42,7 @@ impl RawMap {
         let mut map = HashMap::new();
 
         while !data.is_empty() {
-            let mut cursor = std::io::Cursor::new(data);
+            let mut cursor = model::bitcoin::io::Cursor::new(data);
 
             let key = Vec::<u8>::consensus_decode(&mut cursor)?;
             if key.is_empty() {
@@ -52,7 +52,7 @@ impl RawMap {
             let key_type = model::bitcoin::VarInt::consensus_decode(&mut key.as_slice())?;
 
             let value = Vec::<u8>::consensus_decode(&mut cursor)?;
-            let key = key.into_iter().skip(key_type.len()).collect();
+            let key = key.into_iter().skip(key_type.size()).collect();
 
             map.insert((key_type.0, key), value);
             data = &data[cursor.position() as usize..];
@@ -73,13 +73,15 @@ impl RawMap {
                     // PSBT_IN_PARTIAL_SIG
                     0x02 => {
                         let pk = model::bitcoin::PublicKey::from_slice(&key).map_err(map_err)?;
-                        let sig = model::bitcoin::EcdsaSig::from_slice(&data).map_err(map_err)?;
+                        let sig =
+                            model::bitcoin::ecdsa::Signature::from_slice(&data).map_err(map_err)?;
 
                         state.partial_sigs.insert(pk, sig);
                     }
                     // PSBT_IN_TAP_KEY_SIG
                     0x13 => {
-                        let sig = model::bitcoin::SchnorrSig::from_slice(&data).map_err(map_err)?;
+                        let sig = model::bitcoin::taproot::Signature::from_slice(&data)
+                            .map_err(map_err)?;
 
                         state.tap_key_sig = Some(sig);
                     }
@@ -89,9 +91,10 @@ impl RawMap {
 
                         let pk = model::bitcoin::XOnlyPublicKey::from_slice(&key[..32])
                             .map_err(map_err)?;
-                        let lh = model::bitcoin::util::taproot::TapLeafHash::from_slice(&key[32..])
+                        let lh = model::bitcoin::taproot::TapLeafHash::from_slice(&key[32..])
                             .map_err(map_err)?;
-                        let sig = model::bitcoin::SchnorrSig::from_slice(&data).map_err(map_err)?;
+                        let sig = model::bitcoin::taproot::Signature::from_slice(&data)
+                            .map_err(map_err)?;
 
                         state.tap_script_sigs.insert((pk, lh), sig);
                     }
