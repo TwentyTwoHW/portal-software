@@ -15,8 +15,6 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#![cfg_attr(feature = "emulator", allow(dead_code, unused_variables))]
-
 use alloc::boxed::Box;
 use core::{ops::Deref, str::FromStr};
 
@@ -33,7 +31,7 @@ use minicbor::bytes::ByteArray;
 
 use gui::{FwUpdateProgressPage, SingleLineTextPage, SummaryPage};
 
-use hw_common::{BankStatus, BankToFlash, FlashBank};
+use hw::{BankStatus, BankToFlash, FlashBank};
 
 use super::*;
 use crate::checkpoint;
@@ -50,15 +48,10 @@ const FIRMWARE_SIGNING_KEY: &'static str =
 
 const CHECKPOINT_PAGE_INTERVAL: usize = 4;
 
-// #[cfg_attr(feature = "emulator", allow(dead_code))]
 // const FLASH_OPTKEY1: u32 = 0x0819_2A3B;
-// #[cfg_attr(feature = "emulator", allow(dead_code))]
 // const FLASH_OPTKEY2: u32 = 0x4C5D_6E7F;
 
-#[cfg(feature = "device")]
 type UnlockedFlash<'a> = flash::FlashProgramming<'a>;
-#[cfg(feature = "emulator")]
-type UnlockedFlash<'a> = crate::emulator::flash::UnlockedFlash<'a>;
 
 #[derive(minicbor::Encode, minicbor::Decode)]
 struct Checkpoint {
@@ -76,7 +69,6 @@ struct Checkpoint {
     erase_from: Option<usize>,
 }
 
-#[cfg_attr(feature = "emulator", allow(dead_code))]
 struct FwUpdater<'h> {
     header: &'h FwUpdateHeader,
     hash: sha256::HashEngine,
@@ -104,14 +96,14 @@ impl<'h> FwUpdater<'h> {
                     erase_from: None,
                 })
             } else {
-                let mut buf = alloc::vec![0x00; hw_common::PAGE_SIZE];
+                let mut buf = alloc::vec![0x00; hw::PAGE_SIZE];
                 flash.read(
                     bank_to_flash.get_logical_address(BankStatus::Spare, 0),
                     &mut buf,
                 );
 
                 let len = u16::from_be_bytes(buf[..2].try_into().unwrap()) as usize;
-                if len >= hw_common::PAGE_SIZE - 2 {
+                if len >= hw::PAGE_SIZE - 2 {
                     None
                 } else if let Ok(ckpt) = minicbor::decode(&buf[2..2 + len]) {
                     Some(ckpt)
@@ -139,7 +131,7 @@ impl<'h> FwUpdater<'h> {
                     ckpt.next_page,
                     ckpt.midstate
                 );
-                (ckpt.midstate.deref(), ckpt.next_page * hw_common::PAGE_SIZE)
+                (ckpt.midstate.deref(), ckpt.next_page * hw::PAGE_SIZE)
             }
             None => {
                 // Let's use what the caller is claiming the hash to be - we will verify it later anyways
@@ -147,7 +139,7 @@ impl<'h> FwUpdater<'h> {
                     "Fresh update with first_page_midstate = {:02X?}",
                     header.first_page_midstate
                 );
-                (header.first_page_midstate.deref(), hw_common::PAGE_SIZE)
+                (header.first_page_midstate.deref(), hw::PAGE_SIZE)
             }
         };
         let hash = sha256::HashEngine::from_midstate(
@@ -194,17 +186,10 @@ impl<'h> FwUpdater<'h> {
                 });
                 wait();
             }
-            #[cfg(feature = "emulator")]
-            {
-                let _ = match bank_to_flash.physical {
-                    FlashBank::Bank1 => flash.mass_erase(0),
-                    FlashBank::Bank2 => flash.mass_erase(1),
-                };
-            }
 
             log::debug!("Mass-erase finished!");
 
-            let mut buf = alloc::vec![0x00; hw_common::PAGE_SIZE];
+            let mut buf = alloc::vec![0x00; hw::PAGE_SIZE];
             flash.read(
                 bank_to_flash.get_logical_address(BankStatus::Active, crate::config::CONFIG_PAGE),
                 &mut buf,
@@ -252,7 +237,7 @@ impl<'h> FwUpdater<'h> {
         let len = (serialized.len() as u16).to_be_bytes();
         data.extend(serialized);
         (&mut data[..2]).copy_from_slice(&len);
-        data.resize(hw_common::PAGE_SIZE, 0x00);
+        data.resize(hw::PAGE_SIZE, 0x00);
 
         flash
             .erase_page(self.bank_to_flash.get_physical_page(BankStatus::Spare, 0))
@@ -289,7 +274,7 @@ impl<'h> FwUpdater<'h> {
         rtc: &mut crate::hw::Rtc,
         fb_key: &[u8; 24],
     ) -> Result<(), Error> {
-        if self.page * hw_common::PAGE_SIZE > self.header.size {
+        if self.page * hw::PAGE_SIZE > self.header.size {
             return Err(Error::InvalidFirmware);
         }
 
@@ -320,10 +305,9 @@ impl<'h> FwUpdater<'h> {
 
         log::debug!("Done!");
 
-        let data_end = match ((self.page + 1) * hw_common::PAGE_SIZE).checked_sub(self.header.size)
-        {
-            None => hw_common::PAGE_SIZE,
-            Some(x) => hw_common::PAGE_SIZE - x,
+        let data_end = match ((self.page + 1) * hw::PAGE_SIZE).checked_sub(self.header.size) {
+            None => hw::PAGE_SIZE,
+            Some(x) => hw::PAGE_SIZE - x,
         };
 
         self.page += 1;
@@ -432,7 +416,7 @@ pub async fn handle_begin_fw_update(
 
     let (state, fb_key) = match fast_boot {
         None => {
-            if header.size > hw_common::MAX_FW_PAGES * hw_common::PAGE_SIZE {
+            if header.size > hw::MAX_FW_PAGES * hw::PAGE_SIZE {
                 peripherals
                     .nfc
                     .send(model::Reply::Error("Firmware file too big".into()))
@@ -485,7 +469,6 @@ pub async fn handle_begin_fw_update(
     let events = only_requests(&mut events);
     pin_mut!(events);
 
-    #[cfg(feature = "device")]
     let mut lock = peripherals
         .flash
         .parts
@@ -495,8 +478,6 @@ pub async fn handle_begin_fw_update(
             &mut peripherals.flash.parts.cr,
         )
         .map_err(|_| Error::FlashError)?;
-    #[cfg(feature = "emulator")]
-    let mut lock = peripherals.flash.unlock();
 
     let bank_to_flash = match peripherals.flash.fb_mode {
         false => FlashBank::Bank2,
@@ -504,7 +485,7 @@ pub async fn handle_begin_fw_update(
     };
     log::debug!("Flashing to bank: {:?}", bank_to_flash);
     let mut updater = FwUpdater::new(&mut lock, &header, state, BankToFlash::new(bank_to_flash))?;
-    page.add_confirm((hw_common::PAGE_SIZE * updater.page) as u32); // account for the potential checkpoint
+    page.add_confirm((hw::PAGE_SIZE * updater.page) as u32); // account for the potential checkpoint
     page.draw_to(&mut peripherals.display)?;
     peripherals.display.flush()?;
 
@@ -538,7 +519,7 @@ pub async fn handle_begin_fw_update(
                     .unwrap();
                 peripherals.nfc_finished.recv().await.unwrap();
 
-                page.add_confirm(hw_common::PAGE_SIZE as u32);
+                page.add_confirm(hw::PAGE_SIZE as u32);
                 page.draw_to(&mut peripherals.display)?;
                 peripherals.display.flush()?;
             }

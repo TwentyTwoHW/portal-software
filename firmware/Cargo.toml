@@ -31,8 +31,7 @@ fetch-git-hash = { path = "../fetch-git-hash" }
 model = { path = "../model", features = ["stm32"] }
 gui = { path = "../gui", features = ["stm32"] }
 
-embedded-hal-1 = { package = "embedded-hal", version = "1.0.0", optional = true }
-embedded-hal-02 = { package = "embedded-hal", version = "0.2.6", optional = true }
+embedded-hal = { package = "embedded-hal", version = "0.2.6", optional = true }
 
 rtt-target = { version = "0.5", optional = true }
 rtt-log = { version = "0.3", optional = true }
@@ -43,15 +42,12 @@ stm32l4xx-hal = { git = "http://github.com/TwentyTwoHW/stm32l4xx-hal.git", rev =
 cortex-m-semihosting = { version = "0.5", optional = true }
 cortex-m-log = { version = "0.8", features = ["log-integration", "semihosting"], optional = true}
 # panic-semihosting = { version = "0.6", optional = true }
-stm32f4xx-hal = { version = "0.20", features = ["stm32f405"], optional = true }
-embedded-graphics-core = { version = "0.4", optional = true }
 
 [features]
 default = ["device"]
 production = []
-emulator = ["cortex-m-semihosting", "cortex-m-log", "stm32f4xx-hal", "embedded-graphics-core", "model/emulator", "panic-log", "embedded-hal-1"] # "panic-semihosting", "panic-semihosting/exit"
 emulator-fast-ticks = []
-device = ["stm32l4xx-hal", "embedded-hal-02"] # "panic-probe"
+device = ["stm32l4xx-hal", "embedded-hal"] # "panic-probe"
 device-log = ["rtt-target", "rtt-log"]
 device-qemu = ["cortex-m-semihosting", "cortex-m-log"]
 trace_memory = []

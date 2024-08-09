@@ -27,7 +27,7 @@ use model::reg::*;
 use model::write_buffer::*;
 use model::{Message, MessageFragment, Reply, Request};
 
-use crate::hw_common;
+use crate::hw;
 use crate::Error;
 
 #[allow(dead_code)]
@@ -78,8 +78,8 @@ impl WriteBufferInit<17, 4, 0> for HostWriteBuffer {
 
 pub struct Nt3h<I2C, I2C_PINS> {
     i2c: I2c<I2C, I2C_PINS>,
-    interrupt: hw_common::ChannelReceiver<()>,
-    finished: hw_common::ChannelSender<()>,
+    interrupt: hw::ChannelReceiver<()>,
+    finished: hw::ChannelSender<()>,
 }
 
 impl<I2C, I2C_PINS> Nt3h<I2C, I2C_PINS>
@@ -93,7 +93,7 @@ where
     pub fn new<P: gpio::ExtiPin>(
         i2c: I2c<I2C, I2C_PINS>,
         fd_pin: P,
-    ) -> Result<(Self, NfcInterrupt<P>, hw_common::ChannelReceiver<()>), Error> {
+    ) -> Result<(Self, NfcInterrupt<P>, hw::ChannelReceiver<()>), Error> {
         type Empty = ();
 
         let (sender, receiver) = rtic_sync::make_channel!(Empty, 1);
@@ -393,6 +393,6 @@ pub enum WaitFor {
 }
 
 pub struct NfcInterrupt<P: gpio::ExtiPin> {
-    pub sender: hw_common::ChannelSender<()>,
+    pub sender: hw::ChannelSender<()>,
     pub fd_pin: P,
 }

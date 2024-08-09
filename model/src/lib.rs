@@ -46,8 +46,6 @@ pub const DEFAULT_PASSWORD_ITERATIONS: usize = 1024;
 
 pub const HARDENED_FLAG: u32 = 0x80000000;
 
-#[cfg(feature = "emulator")]
-pub mod emulator;
 pub mod encryption;
 pub mod reg;
 pub mod write_buffer;

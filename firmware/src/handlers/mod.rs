@@ -28,7 +28,7 @@ use gui::{ConfirmBarPage, ErrorPage, MainContent, Page};
 use model::bitcoin::bip32;
 use model::{FwUpdateHeader, NumWordsMnemonic, Reply};
 
-use crate::{checkpoint, hw, hw_common, Error};
+use crate::{checkpoint, hw, Error};
 
 #[allow(dead_code)]
 const GIT_HASH: &'static str = fetch_git_hash::fetch_git_hash!();
@@ -155,13 +155,13 @@ pub enum Event {
 }
 
 pub struct HandlerPeripherals {
-    pub nfc: hw_common::ChannelSender<Reply>,
-    pub nfc_finished: hw_common::ChannelReceiver<()>,
+    pub nfc: hw::ChannelSender<Reply>,
+    pub nfc_finished: hw::ChannelReceiver<()>,
     pub display: hw::Display,
     pub rng: rand_chacha::ChaCha20Rng,
     pub flash: hw::Flash,
     pub rtc: hw::Rtc,
-    pub tsc_enabled: hw_common::TscEnable,
+    pub tsc_enabled: hw::TscEnable,
 }
 
 #[allow(dead_code)]
@@ -177,7 +177,7 @@ fn only_requests(stream: impl Stream<Item = Event>) -> impl Stream<Item = model:
 #[allow(dead_code)]
 fn only_input<'s>(
     stream: impl Stream<Item = Event> + 's,
-    nfc: &'s RefCell<&'s mut hw_common::ChannelSender<Reply>>,
+    nfc: &'s RefCell<&'s mut hw::ChannelSender<Reply>>,
 ) -> impl Stream<Item = bool> + 's {
     stream
         .zip(futures::stream::repeat(nfc))
@@ -196,7 +196,7 @@ fn only_input<'s>(
 #[allow(dead_code)]
 async fn wait_ticks<'s>(
     stream: impl Stream<Item = Event> + 's,
-    nfc: &'s RefCell<&'s mut hw_common::ChannelSender<Reply>>,
+    nfc: &'s RefCell<&'s mut hw::ChannelSender<Reply>>,
     num_ticks: usize,
 ) {
     let stream = stream

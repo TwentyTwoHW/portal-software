@@ -23,7 +23,7 @@ use minicbor::{Decode, Encode};
 
 use model::{ByteArray, EncryptionKey, SerializedDerivationPath};
 
-use crate::hw_common::PAGE_SIZE;
+use crate::hw::PAGE_SIZE;
 use crate::{
     config::read_config,
     hw::{read_flash, write_flash, FlashError},

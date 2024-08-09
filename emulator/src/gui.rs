@@ -36,8 +36,13 @@ use tokio::sync::mpsc;
 
 use portal::{GenerateMnemonicWords, PortalSdk};
 
-use model::emulator::{self, EmulatorMessage};
 use model::FwUpdateHeader;
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub enum EmulatorMessage {
+    Tsc(bool),
+    Reset,
+}
 
 include!(concat!(env!("OUT_DIR"), "/autogen-gui.rs"));
 

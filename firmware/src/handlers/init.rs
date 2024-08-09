@@ -317,7 +317,6 @@ pub async fn handle_por(
     config.try_into_current_state(&peripherals.rtc)
 }
 
-#[cfg(feature = "device")]
 fn read_serial() -> alloc::string::String {
     const OPTION_BYTES: usize = 0x1FFF_7000;
     const SERIAL_OFFSET: usize = 4;
@@ -341,10 +340,6 @@ fn read_serial() -> alloc::string::String {
             .map(|v| v as char)
             .collect()
     }
-}
-#[cfg(feature = "emulator")]
-fn read_serial() -> alloc::string::String {
-    Default::default()
 }
 
 pub async fn handle_init(
@@ -396,7 +391,7 @@ pub async fn handle_init(
                     password,
                 });
             }
-            #[cfg(feature = "emulator")]
+            #[cfg(not(feature = "production"))]
             Some(model::Request::BeginFwUpdate(header)) => {
                 break Ok(CurrentState::UpdatingFw {
                     header,

@@ -20,7 +20,6 @@ use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use model::emulator::EmulatorMessage;
 use tokio::process::Command as ProcessCommand;
 use tokio::sync::mpsc;
 
@@ -32,6 +31,7 @@ use embedded_graphics_simulator::{BinaryColorTheme, OutputSettingsBuilder};
 
 use clap::{Args, Parser};
 
+use emulator::gui::EmulatorMessage;
 use emulator::utils::try_pull_msg;
 
 #[derive(Parser, Debug)]
@@ -208,31 +208,6 @@ async fn main() -> Result<(), emulator::Error> {
     }
 
     while app.wait() && running.load(Ordering::SeqCst) {
-        // while let Some(_) = try_pull_msg(&mut emulator.msgs.finish_boot)? {
-        //     log::info!("Card was reset, performing Noise handshake again...");
-
-        //     let entropy = emulator::utils::model::get_entropy(&args.global_opts.entropy);
-        //     emulator
-        //         .card
-        //         .send(model::emulator::EmulatorMessage::Entropy(entropy))
-        //         .unwrap();
-        //     emulator
-        //         .card
-        //         .send(model::emulator::EmulatorMessage::Rtc(emulator.rtc))
-        //         .unwrap();
-
-        //     sdk.new_tag().await.expect("New tag");
-        // }
-
-        // emulator::link::manage_hw(
-        //     &mut emulator,
-        //     append_to_console,
-        //     &mut emulator_gui.console,
-        //     true,
-        //     true,
-        // )
-        // .await?;
-
         while let Some(s) = try_pull_msg::<String>(&mut log_r)? {
             append_to_console("", &s, &mut emulator_gui.console);
         }
@@ -253,7 +228,6 @@ async fn main() -> Result<(), emulator::Error> {
                     emulator.reset(false).await?;
                     emulator.sdk.new_tag().await?;
                 }
-                _ => {}
             }
         }
 

@@ -23,31 +23,16 @@
 extern crate alloc;
 extern crate cortex_m;
 
-#[cfg(feature = "device")]
-extern crate embedded_hal_02 as ehal;
-#[cfg(feature = "emulator")]
-extern crate embedded_hal_1 as ehal;
+extern crate embedded_hal as ehal;
 
-#[cfg(all(feature = "device", feature = "emulator"))]
-compile_error!("Cannot enable both the `device` and `emulator` features at the same time");
-
-#[cfg(feature = "emulator")]
-extern crate stm32f4xx_hal as hal;
-#[cfg(feature = "device")]
 extern crate stm32l4xx_hal as hal;
 
 mod checkpoint;
 mod config;
-#[cfg(feature = "emulator")]
-mod emulator;
 mod error;
 mod handlers;
-#[cfg(feature = "device")]
 mod hw;
-mod hw_common;
 mod version;
-#[cfg(feature = "emulator")]
-pub use emulator::*;
 
 use core::cell::RefCell;
 use core::mem::MaybeUninit;
@@ -73,18 +58,14 @@ const TIMER_TICK_MILLIS: u32 = 50;
 
 // TODO: https://gist.github.com/andresv/d2d3a13402055d94fcb5f658dc190c1a
 
-#[cfg(any(feature = "emulator", feature = "device-qemu"))]
+#[cfg(feature = "device-qemu")]
 use cortex_m_log::{log::Logger, modes::InterruptFree, printer::semihosting::Semihosting};
-#[cfg(any(feature = "emulator", feature = "device-qemu"))]
+#[cfg(feature = "device-qemu")]
 type SemihostingLogger = Logger<Semihosting<InterruptFree, SemihostingConsole>>;
-// #[cfg(feature = "emulator")]
-// extern crate panic_semihosting;
-#[cfg(any(feature = "emulator", feature = "device-qemu"))]
+#[cfg(feature = "device-qemu")]
 static mut LOGGER: MaybeUninit<SemihostingLogger> = MaybeUninit::uninit();
-
 #[cfg(feature = "device-qemu")]
 pub struct SemihostingConsole;
-
 #[cfg(feature = "device-qemu")]
 impl core::fmt::Write for SemihostingConsole {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
@@ -95,7 +76,6 @@ impl core::fmt::Write for SemihostingConsole {
         Ok(())
     }
 }
-
 #[cfg(feature = "device-qemu")]
 impl cortex_m_log::destination::semihosting::SemihostingComp for SemihostingConsole {}
 
@@ -105,33 +85,9 @@ static HEAP: Heap = Heap::empty();
 // #[cfg(feature = "device")]
 // use panic_probe as _;
 
-pub mod unified_hal {
-    #[cfg(feature = "emulator")]
-    pub use stm32f4xx_hal::pac::*;
-    #[cfg(feature = "device")]
-    pub use stm32l4xx_hal::pac::*;
-
-    pub mod interrupt {
-        #[cfg(feature = "emulator")]
-        pub use stm32f4xx_hal::interrupt::*;
-        #[cfg(feature = "emulator")]
-        #[derive(Clone, Copy)]
-        pub struct TSC;
-        #[cfg(feature = "emulator")]
-        unsafe impl cortex_m::interrupt::Nr for TSC {
-            fn nr(&self) -> u8 {
-                0
-            }
-        }
-
-        #[cfg(feature = "device")]
-        pub use stm32l4xx_hal::interrupt::*;
-    }
-}
-
-#[rtic::app(device = unified_hal, peripherals = true, dispatchers = [CAN1_RX0, CAN1_RX1])]
+#[rtic::app(device = stm32l4xx_hal::pac, peripherals = true, dispatchers = [CAN1_RX0, CAN1_RX1])]
 mod app {
-    use crate::hw_common::TscEnable;
+    use crate::hw::TscEnable;
 
     use super::*;
 
@@ -142,27 +98,24 @@ mod app {
 
     #[local]
     struct Local {
-        nfc: (hw::NfcIc, hw_common::NfcChannelsLocal),
+        nfc: (hw::NfcIc, hw::NfcChannelsLocal),
         nfc_interrupt: hw::NfcInterrupt,
-        tsc: (hw::Tsc, hw_common::ChannelSender<bool>),
+        tsc: (hw::Tsc, hw::ChannelSender<bool>),
         current_state: CurrentState,
         events: (
-            RefCell<hw_common::ChannelReceiver<Request>>,
-            RefCell<hw_common::ChannelReceiver<bool>>,
-            RefCell<hw_common::ChannelReceiver<()>>,
+            RefCell<hw::ChannelReceiver<Request>>,
+            RefCell<hw::ChannelReceiver<bool>>,
+            RefCell<hw::ChannelReceiver<()>>,
         ),
-        timer_sender: hw_common::ChannelSender<()>,
+        timer_sender: hw::ChannelSender<()>,
         peripherals: handlers::HandlerPeripherals,
-
-        #[cfg(feature = "emulator")]
-        emulator_channels: hw::EmulatorChannels,
     }
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
         #[cfg(feature = "device-log")]
         rtt_log::init();
-        #[cfg(any(feature = "emulator", feature = "device-qemu"))]
+        #[cfg(feature = "device-qemu")]
         unsafe {
             let logger = Logger {
                 inner: Semihosting::new(SemihostingConsole),
@@ -211,63 +164,12 @@ mod app {
         let tsc_enabled = TscEnable::new(tsc.get_enabled_ref());
 
         type Empty = ();
-        let (nfc_local, nfc_shared) = hw_common::make_nfc_channels();
+        let (nfc_local, nfc_shared) = hw::make_nfc_channels();
         let (tsc_sender, tsc_receiver) = rtic_sync::make_channel!(bool, 1);
         let (timer_sender, timer_receiver) = rtic_sync::make_channel!(Empty, 1);
 
         let mut noise_rng = rng.clone();
         noise_rng.set_stream(0xFF);
-
-        #[cfg(feature = "emulator")]
-        let emulator_channels = {
-            use crate::hw::EmulatedNT3H;
-            use rand::SeedableRng;
-
-            let (flash_sender, flash_receiver) = rtic_sync::make_channel!(alloc::vec::Vec::<u8>, 1);
-            flash.set_channel(flash_receiver);
-            let (rtc_sender, rtc_receiver) = rtic_sync::make_channel!(alloc::vec::Vec::<u8>, 1);
-            rtc.set_channel(rtc_receiver);
-
-            hw::report_finish_boot();
-
-            let mut entropy = alloc::vec![];
-            let mut found = 0;
-            // A bit hacky but at this point serial interrupts aren't setup yet so we have to wait for the entropy here
-            while found < 2 {
-                match crate::emulator::serial_interrupt() {
-                    None => continue,
-                    Some(val) => {
-                        let data = crate::emulator::read_serial();
-                        if val == crate::emulator::PeripheralIncomingMsg::Entropy {
-                            entropy.extend(&data);
-                            found += 1;
-                        } else if val == crate::emulator::PeripheralIncomingMsg::RtcRegister {
-                            log::debug!("Registers = {:02X?}", &data[..4]);
-                            fast_boot = u32::from_be_bytes(data[..4].try_into().unwrap())
-                                == checkpoint::MAGIC;
-                            found += 1;
-                        }
-                    }
-                }
-            }
-            log::debug!("Seeding rng with {:02X?}", entropy);
-            rng = rand_chacha::ChaCha20Rng::from_seed(entropy.try_into().unwrap());
-
-            if !fast_boot {
-                let msg = model::emulator::CardMessage::WriteRtcRegister(
-                    checkpoint::MAGIC_REGISTER as u8,
-                    checkpoint::MAGIC,
-                );
-                super::write_serial(msg.write_to());
-            }
-
-            hw::EmulatorChannels {
-                tsc: tsc_sender.clone(),
-                emulated_nt3h: EmulatedNT3H::new(nfc_interrupt.clone(), &mut nfc),
-                flash: flash_sender,
-                rtc: rtc_sender,
-            }
-        };
 
         let peripherals = HandlerPeripherals {
             display,
@@ -297,9 +199,6 @@ mod app {
                 ),
                 timer_sender,
                 peripherals,
-
-                #[cfg(feature = "emulator")]
-                emulator_channels,
             },
         )
     }
@@ -460,40 +359,8 @@ mod app {
             rtic_monotonics::systick::Systick::delay(TIMER_TICK_MILLIS.millis()).await;
             let _ = cx.local.timer_sender.try_send(());
 
-            // Report the tick to the emulator to synchronize tests
-            #[cfg(feature = "emulator")]
-            hw::report_tick();
-
             #[cfg(feature = "trace_memory")]
             log::trace!("mem stats: {} used, {} free", HEAP.used(), HEAP.free());
-        }
-    }
-
-    #[task(binds = USART1, local = [emulator_channels], priority = 3)]
-    fn emulator_hook(_cx: emulator_hook::Context) {
-        #[cfg(feature = "emulator")]
-        match emulator::serial_interrupt() {
-            Some(emulator::PeripheralIncomingMsg::Nfc) => {
-                _cx.local.emulator_channels.emulated_nt3h.handle_cmd();
-            }
-            Some(emulator::PeripheralIncomingMsg::Tsc) => {
-                let data = emulator::read_serial();
-                let v = data[0] == 0x01;
-
-                let _ = _cx.local.emulator_channels.tsc.try_send(v);
-            }
-            Some(emulator::PeripheralIncomingMsg::Reset) => {
-                cortex_m::peripheral::SCB::sys_reset();
-            }
-            Some(emulator::PeripheralIncomingMsg::FlashContent) => {
-                let data = emulator::read_serial();
-                let _ = _cx.local.emulator_channels.flash.try_send(data);
-            }
-            Some(emulator::PeripheralIncomingMsg::RtcRegister) => {
-                let data = emulator::read_serial();
-                let _ = _cx.local.emulator_channels.rtc.try_send(data);
-            }
-            _ => {}
         }
     }
 
@@ -530,11 +397,5 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     #[cfg(feature = "panic-log")]
     log::error!("PANIC: {:?}", info);
 
-    #[cfg(feature = "emulator")]
-    {
-        cortex_m::peripheral::SCB::sys_reset();
-    }
-
-    #[cfg(not(feature = "emulator"))]
     loop {}
 }
