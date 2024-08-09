@@ -47,12 +47,13 @@ stm32f4xx-hal = { version = "0.20", features = ["stm32f405"], optional = true }
 embedded-graphics-core = { version = "0.4", optional = true }
 
 [features]
-default = ["emulator", "panic-log"]
+default = ["device"]
 production = []
 emulator = ["cortex-m-semihosting", "cortex-m-log", "stm32f4xx-hal", "embedded-graphics-core", "model/emulator", "panic-log", "embedded-hal-1"] # "panic-semihosting", "panic-semihosting/exit"
 emulator-fast-ticks = []
 device = ["stm32l4xx-hal", "embedded-hal-02"] # "panic-probe"
 device-log = ["rtt-target", "rtt-log"]
+device-qemu = ["cortex-m-semihosting", "cortex-m-log"]
 trace_memory = []
 panic-log = []
 

@@ -73,14 +73,31 @@ const TIMER_TICK_MILLIS: u32 = 50;
 
 // TODO: https://gist.github.com/andresv/d2d3a13402055d94fcb5f658dc190c1a
 
-#[cfg(feature = "emulator")]
+#[cfg(any(feature = "emulator", feature = "device-qemu"))]
 use cortex_m_log::{log::Logger, modes::InterruptFree, printer::semihosting::Semihosting};
-#[cfg(feature = "emulator")]
-type SemihostingLogger = Logger<Semihosting<InterruptFree, emulator::SemihostingConsole>>;
+#[cfg(any(feature = "emulator", feature = "device-qemu"))]
+type SemihostingLogger = Logger<Semihosting<InterruptFree, SemihostingConsole>>;
 // #[cfg(feature = "emulator")]
 // extern crate panic_semihosting;
-#[cfg(feature = "emulator")]
+#[cfg(any(feature = "emulator", feature = "device-qemu"))]
 static mut LOGGER: MaybeUninit<SemihostingLogger> = MaybeUninit::uninit();
+
+#[cfg(feature = "device-qemu")]
+pub struct SemihostingConsole;
+
+#[cfg(feature = "device-qemu")]
+impl core::fmt::Write for SemihostingConsole {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        for byte in s.as_bytes() {
+            unsafe { cortex_m_semihosting::syscall!(WRITEC, *byte) };
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(feature = "device-qemu")]
+impl cortex_m_log::destination::semihosting::SemihostingComp for SemihostingConsole {}
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
@@ -145,10 +162,10 @@ mod app {
     fn init(cx: init::Context) -> (Shared, Local) {
         #[cfg(feature = "device-log")]
         rtt_log::init();
-        #[cfg(feature = "emulator")]
+        #[cfg(any(feature = "emulator", feature = "device-qemu"))]
         unsafe {
             let logger = Logger {
-                inner: Semihosting::new(emulator::SemihostingConsole),
+                inner: Semihosting::new(SemihostingConsole),
                 level: log::LevelFilter::Trace,
             };
             *LOGGER.as_mut_ptr() = logger;
@@ -480,7 +497,7 @@ mod app {
         }
     }
 
-    #[task(binds = EXTI9_5, local = [nfc_interrupt])]
+    #[task(binds = EXTI9_5, local = [nfc_interrupt], priority = 3)]
     fn nfc_interrupt(_cx: nfc_interrupt::Context) {
         #[cfg(feature = "device")]
         {

@@ -400,6 +400,7 @@ fn handle_error(err: Error, peripherals: &mut HandlerPeripherals) -> ! {
     log::error!("{:?}", _err);
 
     let try_draw_message = |peripherals: &mut HandlerPeripherals| -> Result<(), Error> {
+        log::debug!("{:?}", err);
         let error_msg = match err {
             Error::InvalidFirmware => "Invalid Firmware",
             Error::InvalidPassword => "Invalid Pair Code",

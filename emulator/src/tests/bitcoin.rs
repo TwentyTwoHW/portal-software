@@ -31,7 +31,7 @@ async fn test_display_address(mut tester: Tester) -> Result<(), crate::Error> {
     tester.display_assertion("iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAABj0lEQVR4nO2YixaDIAiG5f0fmnXyAj9iudxOnRO76JYKn4hCUbr5FQABEAABEAATAEy6ZjrtLh35XAFN6C86vwPgTfTOQIsARcgmr5bbO7XZ6TL3z1IN9jIAIDT52tpogfzJdlgF2HuJuqa0zNS3QLPDuhM6FjCzNv+VWSb0X/OBOtXdAK10ACY0xEEUAA8F4F+BDfYBi/L/AnA7qoby/w/gCesBeD8+a5TJx305Y5P8zl1SiQiq3RnPZpypm24CU4EASo4ApZ1lcD8+kX8d2wHAEpJ7HeviTX67eFs/TtbhDOBAgV8zaQBlId0+BFDr38MuAGi5QwBcN/niWqIP6DXmmgYkBDAywKLdLpAUS68xeHm3CwyF7KDqA9SCt7YW7oLZzY/W+8nh8SSAiIYBEAABcBMAB8BBiwQ4SQD1YwliicA6Q8qBzyZ2lwBqUXmErD2oQF4WqdLvRM2Be/oAJcyzztoMgL57vwwwYQGmNLbA7QDLSwDpFVsnRI2SL7pOeAngNedAxIIACIAAeD3ABwVUmkazYKuPAAAAAElFTkSuQmCC", None).await?;
     tester.display_assertion("iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAABtklEQVR4nO2YUbLCMAhFYf+L5jlNAhdC29h8+BxRJ9WWwoEQgmX68KsACqAACqAAFgCE8Sh8K26Ccm+AF+x3m+8ByEv1wcCbAF3JS98YX29S73Bs8k1rwN4GcAiqH6PtI9A+LQ67AIeUmVOj3dM8AhqH/SRMIhC8Dr8hLAv2n+XAcPUIgI4JwIKFKkQF8H8AXMmQflHc8nYCjHKhcrAedR2EXcHWBxjgqQQZQFPG03dKqh3IiZaq6KCe59TByU40KCehSwD67wmgnwl6ROOuMiBMidd6n9bk4V4CMIZTAMHqTmyz4DzupV4t86iKaNsdMwA/BUHAQmhmKMuHkCuTh0jK3kt6B+AqBy4BcJIS/QsA8xTsAEwr6ywH/FxxDiAol+eAKxmcwLplSP5uQuOoRSxJMfuzVUAwh64g2bLnrAfi8/aIV9qszb3gysBKi1G7YQEUQAF8G4AUwMUV1l3Xtjx8LMGi97tOp214vimUZwBjGDxGpg8qPK+YVpO7MXORnjlA386hH54A8N/7Y4CFCAjTeQQ+DrA9BdgTjqd+YQosCbUvTJPwEcDP1IHaCwqgAArg5wH+AME8jEZgacj+AAAAAElFTkSuQmCC", None).await?;
 
-    tester.tsc(true).await?;
+    tester.release_and_press().await?;
 
     tester.display_assertion(super::PORTAL_READY, None).await?;
 
@@ -50,7 +50,9 @@ async fn test_public_descriptors(mut tester: Tester) -> Result<(), crate::Error>
     tester.display_assertion(super::PORTAL_READY, None).await?;
 
     tester.nfc(NfcAction::RequestDescriptors).await?;
-    tester.display_assertion("iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAABrElEQVR4nO2Yi66DMAiG4f0f+j+ZWm6lPatztwyzmKZS+AoIdUxvvgqgAAqgAAqgAD4RAMckKA4eupAr4URQDfN07ZrBewFucofsWwB2MXv3QbmNwlMvj10rVLvMcBbLFYDmnBkAhBA2kM1674YFALnLz66yMxYgVTIF0PkzAJDlpwEe8oBLhqsBTA7EtTLT8pBDxni2+wCgvtSYkM+2/uWFYBhpojR1qxcUwHcA4GpGBKv8/wK+1j57nR8GoP0W/lSSVRGQrzRhIBO+mMVNcXYYsZ1zCABbb/uB69t+OUY5kMqPPUBWOG07+ZHKazkPANt/AkDTnYUg7OI0wGSb6AM7zudBDnRGJTVCCgxzwG1kEsfRWxB78marCwHbc2gyWAzB8kn7hb2gqx8vb0Z4VueqdswoAK2okE9IfXXNOZ+h0rZK7G/+9jTUplAK2BY0ZADt1niU7KBj+wViRYIChi5z6q1cANBdBIDuY6MH0H3PAVo9tYFf8QCYxh7wLQDKHTxgdV8KkDt5IQSahFswQhJ6iyR/N2Th02BQzNpJEv5wHaheUAAFUAA/D/AHrZmlRhwRFIgAAAAASUVORK5CYII=", None).await?;
+    tester
+        .display_assertion(super::REQUEST_DESCRIPTOR, None)
+        .await?;
 
     tester.tsc(true).await?;
 
@@ -83,8 +85,8 @@ async fn test_sign_psbt(mut tester: Tester) -> Result<(), crate::Error> {
     tester.tsc(true).await?;
 
     // Fee
-    tester.display_assertion("iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAABlUlEQVR4nO2Y0dqDIAiG4f4vmv9ZinyiUrZ/62DsYGkSvgIixfTwLwESIAESIAGmAHIdTRgvN/RwqPcywH0tAYCwvIblJYRt/BeqbaZesjMPPLUFcKgrvdK2FZW2MLrAoFWu4NX7PLdIaAHTotPpWoh75wMATFTxj3lW8XAK4NVq2yxgky8AOIqHLQs0j1f3F8e7qBgAbsVAZsIEeAbAx6n2V1fbAgRXcYqFcFwFeAIgBFkU+qtry8Z2T8jpUEpxW9aEuJODAQonF8wHU7gAoJvnDYC2aj8+WnYAmMXALgBM3ixRXNCZGKuCzwCARUyhOMWfsQDVYw6ek/8B6IJlHYTUW2AHYBaEFsFW5pxswwFgANrZhpBgJE5AQSLisRSF0JDJeJ4FCZAACZAAzwNIAkzucCv5oJ6Gl1CGegSrIXtntZoR5KB7CqB/BEpqSz9W9LyDyKFgJRcDkMJ6AH1Vt1N9UMwCHF4OLPWuBYQXAGTP1G863wXwLliDXgtC0q9V3gVuyReCcAPg5/JAngUJkAAJ8PMAfzAVrEYGEamYAAAAAElFTkSuQmCC", Some(3)).await?;
-    tester.tsc(true).await?;
+    tester.display_assertion("iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAABlUlEQVR4nO2Y0dqDIAiG4f4vmv9ZinyiUrZ/62DsYGkSvgIixfTwLwESIAESIAGmAHIdTRgvN/RwqPcywH0tAYCwvIblJYRt/BeqbaZesjMPPLUFcKgrvdK2FZW2MLrAoFWu4NX7PLdIaAHTotPpWoh75wMATFTxj3lW8XAK4NVq2yxgky8AOIqHLQs0j1f3F8e7qBgAbsVAZsIEeAbAx6n2V1fbAgRXcYqFcFwFeAIgBFkU+qtry8Z2T8jpUEpxW9aEuJODAQonF8wHU7gAoJvnDYC2aj8+WnYAmMXALgBM3ixRXNCZGKuCzwCARUyhOMWfsQDVYw6ek/8B6IJlHYTUW2AHYBaEFsFW5pxswwFgANrZhpBgJE5AQSLisRSF0JDJeJ4FCZAACZAAzwNIAkzucCv5oJ6Gl1CGegSrIXtntZoR5KB7CqB/BEpqSz9W9LyDyKFgJRcDkMJ6AH1Vt1N9UMwCHF4OLPWuBYQXAGTP1G863wXwLliDXgtC0q9V3gVuyReCcAPg5/JAngUJkAAJ8PMAfzAVrEYGEamYAAAAAElFTkSuQmCC", None).await?;
+    tester.release_and_press().await?;
 
     tester.display_assertion(super::PORTAL_READY, None).await?;
 
@@ -125,8 +127,8 @@ async fn test_sign_psbt_ignore_change(mut tester: Tester) -> Result<(), crate::E
     tester.tsc(true).await?;
 
     // Fee
-    tester.display_assertion("iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAABgElEQVR4nO2Y0RqDIAiF4f0fmn1LkYMpWWvrYuxiaSH8yQktpod/CZAACZAACTAEkHU0YTxc8MOh32WA614CAGF5X5a3EbbxX6i2mbylmx4YdQpgc1d6pW13VNrCmAKDVruCV8/zeEbCGTAvGk7vhdgnHwAgUMXf4sz0cAjQu9W2zYAFnwBwpIdTM9AyXtNfEt+pYgdwSQNZCRPgGYBep9oPjrUYktO59yNw2QbwAEAIqij0gyPa7q5319wjawbeBzo9Cj6IH8K5EDcDOMdLACMNnAfQ8aqFKQA1cdwMYLlc0McXAMD+ZoBhTm8FGInQhGXbnCi4pqA5/PQxhAIihwWIQVwCYowKEezcxoUo14IESIAESICHACQBBme4ra6wn4aXUG47MluKtSvkl2ewg+4hgP4ROKkt/VjheXcmm4OZXQxACtsD6Ku6reo7xyzA0dvBTH06A8ITALIx9ZvObwH6FMxB10RI+rWqT0F3ywsiPAHwd3Ug14IESIAE+HuAF4nasUbIX0GjAAAAAElFTkSuQmCC", Some(3)).await?;
-    tester.tsc(true).await?;
+    tester.display_assertion("iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAABgElEQVR4nO2Y0RqDIAiF4f0fmn1LkYMpWWvrYuxiaSH8yQktpod/CZAACZAACTAEkHU0YTxc8MOh32WA614CAGF5X5a3EbbxX6i2mbylmx4YdQpgc1d6pW13VNrCmAKDVruCV8/zeEbCGTAvGk7vhdgnHwAgUMXf4sz0cAjQu9W2zYAFnwBwpIdTM9AyXtNfEt+pYgdwSQNZCRPgGYBep9oPjrUYktO59yNw2QbwAEAIqij0gyPa7q5319wjawbeBzo9Cj6IH8K5EDcDOMdLACMNnAfQ8aqFKQA1cdwMYLlc0McXAMD+ZoBhTm8FGInQhGXbnCi4pqA5/PQxhAIihwWIQVwCYowKEezcxoUo14IESIAESICHACQBBme4ra6wn4aXUG47MluKtSvkl2ewg+4hgP4ROKkt/VjheXcmm4OZXQxACtsD6Ku6reo7xyzA0dvBTH06A8ITALIx9ZvObwH6FMxB10RI+rWqT0F3ywsiPAHwd3Ug14IESIAE+HuAF4nasUbIX0GjAAAAAElFTkSuQmCC", None).await?;
+    tester.release_and_press().await?;
 
     tester.display_assertion(super::PORTAL_READY, None).await?;
 

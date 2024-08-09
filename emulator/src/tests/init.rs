@@ -21,6 +21,8 @@ use super::*;
     entropy = "0000000000000000000000000000000000000000000000000000000000000000"
 )]
 async fn test_generate_mnemonic_12words(mut tester: Tester) -> Result<(), crate::Error> {
+    tester.display_assertion(super::WELCOME, None).await?;
+
     tester.nfc(NfcAction::GetStatus).await?;
     tester
         .nfc_assertion(model::Reply::Info(model::DeviceInfo {
@@ -36,19 +38,19 @@ async fn test_generate_mnemonic_12words(mut tester: Tester) -> Result<(), crate:
             None,
         ))
         .await?;
-    tester.display_assertion("iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAABRklEQVR4nO2YURKDIAxEyf0PvR2FBNCiBOi0TtcPqVWSZ4hsQMKXDwIQgADPBcAi9h8CgAxhRBupRfwt9r8DwPlGCOprO7VaBwDEGYFoXp2kdgLAPQTmsmwzQHeCzQLUQagiMJaE3Rho5cAWi5Ec0DTuZEeV/WUrg1/BzMdILSDAHwMskEQCSK2vzjog6s6SemCbAftnwUL1ZFE94JyGG/o/Vw+4xvOuIvLXA24VOuk/8nAM1APqv4+jGfIS4KP1QDPrYQ3rAQIQgAAEeAwACHC6FtPVXO7Z0nffSykrDtPCrKYwK0ku98t4CmbwCkBPypPJEp31EhwfSX6QHs49stFrgFAQVwBpTwChfIsjgFIE3SrIPfQGwnQEILcAkAoghaQrAnMA1ncOwMpKHJOw9hhsZfA2CW3VcjDKeYBaQAACEIAA1fECvNkjRpSzZRoAAAAASUVORK5CYII=", None).await?;
+    tester.display_assertion("iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAABbUlEQVR4nO2YURLDIAhE5f6H3nZSQTAaNbbNz/YjGW2AN4iyiaSHfwQgAAH2AHBljynnBCjPQJYiH7bvGDh85LG/yyIAlpOh0ZFjqYc8RloCgKxnoAQ2gGr+Z0tQB0bqAP0PQJrzNwDmMHSNWyA6v1oDWtZpkuCIEtfeVf+NXXBnM7IXEIAAN5sIAXrteOSoaIBw+tWaII7dKTlqx6NTsNEBxd9bGgEeeLwEcwDeeTV/aslLAKO1hBlohqXfmgPAZbHJdBcywE4GmupoLAukit/n6NfAWQuoShK/RNt6oL8LgkJpaYSJXfB9PTApy37YCzDln92QAAQgwPMAIMBpLCZ7nLRzQkTcFwmvhaybInbFbPG5JHN4BaAX5Slkmc6sBPUjOQ7yw8WiOL0GSI44AHzQ81t/D0Apkn4qKBb6B9J2BiBDAEgAyCmZysAegNnuAZjkRF2EMWIyZdgsQntDqZzyHGAvIAABCECA8HsBUJhXRmrXkc8AAAAASUVORK5CYII=", None).await?;
 
     const SCREENS: [&'static str; 6] = [
-        "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",
+        "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",
         super::LOADING
     ];
 
     for screen in SCREENS {
-        tester.tsc(true).await?;
+        tester.release_and_press().await?;
         tester.display_assertion(screen, Some(100)).await?;
     }
 
@@ -57,11 +59,14 @@ async fn test_generate_mnemonic_12words(mut tester: Tester) -> Result<(), crate:
     tester.nfc_assertion(model::Reply::Ok).await?;
 
     tester.nfc(NfcAction::RequestDescriptors).await?;
-    tester.tsc(true).await?;
+    tester
+        .display_assertion(super::REQUEST_DESCRIPTOR, None)
+        .await?;
+    tester.release_and_press().await?;
     tester
         .nfc_assertion(model::Reply::Descriptor {
-            external: "wpkh([2bd3bdd7/84'/1'/0']tpubDCPMyXQR36y1uRVgsLGeNgN3awiqucyHGUa7pjQygcRbrbbWCMeRKnShL2hRfvE4zcQ9m9fjMMZHjSoQVatYyuwKqp6AyszbRt6s4iSXChJ/0/*)#klvmrneg".into(),
-            internal: Some("wpkh([2bd3bdd7/84'/1'/0']tpubDCPMyXQR36y1uRVgsLGeNgN3awiqucyHGUa7pjQygcRbrbbWCMeRKnShL2hRfvE4zcQ9m9fjMMZHjSoQVatYyuwKqp6AyszbRt6s4iSXChJ/1/*)#8tf67xfs".into()),
+            external: "wpkh([fd50dc9c/84'/1'/0']tpubDChed5aPXLWED6QsfAoHAe6bHwYqSKqFU5DTTXyojnCXxqRQpnZNpDHnrQti1s9Wd1Y4YoBfSD6My4zUdXdwSYYRekAcYZM1RWNcyazAZfL/0/*)#4hkpx387".into(),
+            internal: Some("wpkh([fd50dc9c/84'/1'/0']tpubDChed5aPXLWED6QsfAoHAe6bHwYqSKqFU5DTTXyojnCXxqRQpnZNpDHnrQti1s9Wd1Y4YoBfSD6My4zUdXdwSYYRekAcYZM1RWNcyazAZfL/1/*)#yrnqmyhx".into()),
         })
         .await?;
 
@@ -155,8 +160,8 @@ async fn test_restore_mnemonic(mut tester: Tester) -> Result<(), crate::Error> {
     ];
 
     for screen in SCREENS {
-        tester.tsc(true).await?;
-        tester.display_assertion(screen, Some(100)).await?;
+        tester.release_and_press().await?;
+        tester.display_assertion(screen, None).await?;
     }
 
     tester.display_assertion(super::PORTAL_READY, None).await?;
@@ -164,7 +169,10 @@ async fn test_restore_mnemonic(mut tester: Tester) -> Result<(), crate::Error> {
     tester.nfc_assertion(model::Reply::Ok).await?;
 
     tester.nfc(NfcAction::RequestDescriptors).await?;
-    tester.tsc(true).await?;
+    tester
+        .display_assertion(super::REQUEST_DESCRIPTOR, None)
+        .await?;
+    tester.release_and_press().await?;
     tester
         .nfc_assertion(model::Reply::Descriptor {
             external: super::WPKH_EXTERNAL_DESC.to_string(),
@@ -205,7 +213,7 @@ async fn test_restore_mnemonic_pair_code(mut tester: Tester) -> Result<(), crate
     ];
 
     for screen in SCREENS {
-        tester.tsc(true).await?;
+        tester.release_and_press().await?;
         tester.display_assertion(screen, Some(100)).await?;
     }
 
@@ -214,7 +222,10 @@ async fn test_restore_mnemonic_pair_code(mut tester: Tester) -> Result<(), crate
     tester.nfc_assertion(model::Reply::Ok).await?;
 
     tester.nfc(NfcAction::RequestDescriptors).await?;
-    tester.tsc(true).await?;
+    tester
+        .display_assertion(super::REQUEST_DESCRIPTOR, None)
+        .await?;
+    tester.release_and_press().await?;
     tester
         .nfc_assertion(model::Reply::Descriptor {
             external: super::WPKH_EXTERNAL_DESC.to_string(),
@@ -242,7 +253,8 @@ async fn test_unverified(mut tester: Tester) -> Result<(), crate::Error> {
     tester.display_assertion(super::LOADING, None).await?;
     tester.nfc(NfcAction::Resume).await?;
 
-    const SCREENS: [&'static str; 6] = [
+    const SCREENS: [&'static str; 7] = [
+        "iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAABJ0lEQVR4nO2Y0Q6DMAhFy/9/NNtoAalacV23ZLk+aKoFjhTLjVR+fAAAAAB4D4BHdnzLKQB8LlMqstg8Y7DYHoyJ5Ua8nwDIc6tXtdiMW2y57uaNAZjyGfAA/fjs+rEluAr0DwBjDF/jszXfj7M1oGVbLgjEa1/125rovoJ8Bm58jOgFAAAA9MASAE7BrNMDrx0wuQuu0QPJbXipHiiUW/tF7TgpiJYBaHzoAegBAAAAAAD4PgADYDdu7UyeqOyz1if/Uswq6CLrphw7ZLOop2IORwB6Uh4na3Rm5b052tYp5kL+AJnTMUDZEAeAil5frJwBKIVJB7fQB1ymM8B0CcAUAFpKUhmYAzDbOQAT89wXYYzo6vCwCE23dU6xD6AXAAAAAABAOB6LknRGg9zGfwAAAABJRU5ErkJggg==",
         "iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAABM0lEQVR4nO2X2xKDIAxE4f8/emshCRcVYxmGh67T6oAkOYbYbGPYfBCAAAT4DQAjO7xySoBoVi4aWXbEQFp+MY5IE+28LwOI3seHeO/HEjtdT+seATzxkY00QD++u7oA4NqBcaApAE8KFgJ8g+t3DJD3+G7Pz2NvBkoVP9RAhHyqqq9ronsL3mzBizeBzYgA1APUA0sA3N1wkR5wgy/SA4h79cARHVv1gE8TrhUkKQP79IDoEeoBNiMCEIAAfwgAApzG0s7SHZV91V9nSC+0SdVFQbphQNshxSKfgjkcAehJeQqZ0JlV6c2tbV5iLpLgM6djgFARNwAZPT9YuANQCpMOxUJvIExnAPERALEBkJS4MjAHYLZzACbm0RdhG7Gow8siNN3WOeXvAHsBAQhAAAI0xwcWgXVG1P2MRwAAAABJRU5ErkJggg==",
         "iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAABK0lEQVR4nO2W3RKEIAiF5f0fmt0U8KdSXNfx5jS7NZrAF1IcCocPAAAAAL8BcM+Op5wCgMzKRSPLvjE4Ln8YE8eJet4BQDOPz+K9HUvseL2tGwG4MsfJSAO047erawvIkYVRoAUA3zZsBLiC678PkPb4bc/vY28GchUPaoBYfkXVlzXRvAUzWzD5NqAZAQB6AHrg3wD+brhFD0x8AnfpAWfwbXrAJUh2tuPTggR6AHoAAAAAAADOATAAbmNpZ/GOyr6iVbL0QptUXRSkGwauO6RYpFMwhz0APSlPJhM6s8q9ubZNS8zFNcxO+wChIK4AErootzcApTDpkC30BoflDDANAZgqAEmJKwNrAGa7BmBintsirCNmdfhYhKbbGqf4DqAXAAAAAABAdXwAj2p4RsffL7cAAAAASUVORK5CYII=",
         "iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAABKElEQVR4nO2W0RqDIAiF9f0f+mwpYlopzjkvdrqoDxP4I4rj3eaDAAQgwGcAaPlhKCgBvHqZaGTbOwfC9hvbIyyU67YKwFsfHxK9tiV3uF72dQEs+RGdUoLafrp+DaCXaArAVoB1AJK/jZHf8dM7v9pjAL2eleh11597ovoKBnpg5EvgMCIA9QD1wAIAmGDW6YHjD7hVDxgBFuoB2BTZsnFsq8APADbqAe1i6gECEIAABPg3ABDgYss4C3eS7DuNSsgs1MWki5xMQ4dyQopHPDkN2AJIp8STyYROvfJsLn3jFg1xmDloG8CdiAuAiB4fzD0BJAqVDtkj3YCbrgB8FwC+AJCSmCowB6C+cwAq5lE3YZkxq8PbJlTdVgXlf4CzgAAEIAABiuMFJhh2RttgXiwAAAAASUVORK5CYII=",
@@ -252,8 +264,8 @@ async fn test_unverified(mut tester: Tester) -> Result<(), crate::Error> {
     ];
 
     for screen in SCREENS {
-        tester.tsc(true).await?;
-        tester.display_assertion(screen, Some(100)).await?;
+        tester.release_and_press().await?;
+        tester.display_assertion(screen, None).await?;
     }
 
     tester.nfc_assertion(model::Reply::Ok).await?;
@@ -271,8 +283,13 @@ async fn test_unverified(mut tester: Tester) -> Result<(), crate::Error> {
         }))
         .await?;
 
+    tester.wait_ticks(2).await?;
+
     tester.nfc(NfcAction::RequestDescriptors).await?;
-    tester.tsc(true).await?;
+    tester
+        .display_assertion(super::REQUEST_DESCRIPTOR, None)
+        .await?;
+    tester.release_and_press().await?;
     tester
         .nfc_assertion(model::Reply::Descriptor {
             external: super::WPKH_EXTERNAL_DESC.to_string(),
@@ -287,6 +304,8 @@ async fn test_unverified(mut tester: Tester) -> Result<(), crate::Error> {
     entropy = "0000000000000000000000000000000000000000000000000000000000000000"
 )]
 async fn test_reset_during_generate_mnemonic(mut tester: Tester) -> Result<(), crate::Error> {
+    tester.display_assertion(super::WELCOME, None).await?;
+
     tester.nfc(NfcAction::GetStatus).await?;
     tester
         .nfc_assertion(model::Reply::Info(model::DeviceInfo {
@@ -302,7 +321,7 @@ async fn test_reset_during_generate_mnemonic(mut tester: Tester) -> Result<(), c
             None,
         ))
         .await?;
-    tester.display_assertion("iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAABRklEQVR4nO2YURKDIAxEyf0PvR2FBNCiBOi0TtcPqVWSZ4hsQMKXDwIQgADPBcAi9h8CgAxhRBupRfwt9r8DwPlGCOprO7VaBwDEGYFoXp2kdgLAPQTmsmwzQHeCzQLUQagiMJaE3Rho5cAWi5Ec0DTuZEeV/WUrg1/BzMdILSDAHwMskEQCSK2vzjog6s6SemCbAftnwUL1ZFE94JyGG/o/Vw+4xvOuIvLXA24VOuk/8nAM1APqv4+jGfIS4KP1QDPrYQ3rAQIQgAAEeAwACHC6FtPVXO7Z0nffSykrDtPCrKYwK0ku98t4CmbwCkBPypPJEp31EhwfSX6QHs49stFrgFAQVwBpTwChfIsjgFIE3SrIPfQGwnQEILcAkAoghaQrAnMA1ncOwMpKHJOw9hhsZfA2CW3VcjDKeYBaQAACEIAA1fECvNkjRpSzZRoAAAAASUVORK5CYII=", None).await?;
+    tester.display_assertion("iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAABbUlEQVR4nO2YURLDIAhE5f6H3nZSQTAaNbbNz/YjGW2AN4iyiaSHfwQgAAH2AHBljynnBCjPQJYiH7bvGDh85LG/yyIAlpOh0ZFjqYc8RloCgKxnoAQ2gGr+Z0tQB0bqAP0PQJrzNwDmMHSNWyA6v1oDWtZpkuCIEtfeVf+NXXBnM7IXEIAAN5sIAXrteOSoaIBw+tWaII7dKTlqx6NTsNEBxd9bGgEeeLwEcwDeeTV/aslLAKO1hBlohqXfmgPAZbHJdBcywE4GmupoLAukit/n6NfAWQuoShK/RNt6oL8LgkJpaYSJXfB9PTApy37YCzDln92QAAQgwPMAIMBpLCZ7nLRzQkTcFwmvhaybInbFbPG5JHN4BaAX5Slkmc6sBPUjOQ7yw8WiOL0GSI44AHzQ81t/D0Apkn4qKBb6B9J2BiBDAEgAyCmZysAegNnuAZjkRF2EMWIyZdgsQntDqZzyHGAvIAABCECA8HsBUJhXRmrXkc8AAAAASUVORK5CYII=", None).await?;
 
     tester.reset().await?;
     tester.wait_ticks(5).await?;

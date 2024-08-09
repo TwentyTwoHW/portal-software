@@ -73,22 +73,22 @@ pub fn functional_test(attr: TokenStream, item: TokenStream) -> TokenStream {
     let original_ident_str = original_ident.to_string();
 
     let flash = match attrs.flash_file {
-        None => quote! { Box::new(Cursor::new(vec![])) },
+        None => quote! { None },
         Some(path) => quote! {{
-            let flash = tokio::fs::read(#path).await?;
-            Box::new(Cursor::new(flash))
+            Some((#path.into(), false))
         }},
     };
     let entropy = match attrs.entropy {
         None => quote! { None },
         Some(v) => quote! {{
-            let entropy = crate::utils::model::parse_entropy(#v).expect("Valid 32 byte hex entropy");
+            use std::str::FromStr;
+            let entropy = #v.parse::<u64>().expect("Valid u64 number");
             Some(entropy)
         }},
     };
 
     let expanded = quote! {
-        #[tokio::test(flavor ="multi_thread", worker_threads = 2)]
+        #[tokio::test(flavor ="multi_thread", worker_threads = 1)]
         async fn #original_ident() -> Result<(), crate::Error> {
             use std::io::Cursor;
 
@@ -109,6 +109,8 @@ pub fn functional_test(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             let mut emulator = EmulatorInstance::spawn_qemu(
                 &firmware,
+                true,
+                1,
                 false,
                 None,
                 false,

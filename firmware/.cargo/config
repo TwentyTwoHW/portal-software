@@ -8,7 +8,7 @@ rustflags = [
   # Use v0 symbol mangling style (https://rust-lang.github.io/rfcs/2603-rust-symbol-name-mangling-v0.html). This allows recovering the full monomorphized type from the symbol name
   "-C", "symbol-mangling-version=v0",
   "-C", "linker-plugin-lto",
-  "-C", "linker=clang-17",
+  "-C", "linker=clang-18",
   "-C", "link-arg=-flto",
   "-C", "link-arg=-fuse-ld=lld",
   "-C", "link-arg=--target=thumbv7em-none-eabihf"
@@ -24,8 +24,8 @@ runner = "qemu-system-arm -display none -monitor none -gdb tcp::3333 -cpu cortex
 [alias]
 run-wait-gdb = "run -- -S"
 
-# [unstable]
+[unstable]
 # Rebuild std from scratch
-# build-std = ["std", "panic_abort"]
+build-std = ["std", "panic_abort"]
 # Do not store panic strings
-# build-std-features = ["panic_immediate_abort"]
+build-std-features = ["panic_immediate_abort"]

@@ -1,0 +1,21 @@
+[package]
+name = "nt3h-emulator"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.36", features = ["io-util", "time", "net", "sync"] }
+log = "0.4"
+model = { path = "../../model" }
+sdk = { path = "../../sdk", features = ["debug"] }
+env_logger = { version = "0.10", optional = true }
+
+[features]
+simulator = ["tokio/rt-multi-thread", "tokio/macros", "env_logger"]
+
+
+[[bin]]
+name = "simulator"
+required-features = ["simulator"]

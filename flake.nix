@@ -76,7 +76,7 @@
         };
 
         defaultDeps = with pkgs; [ cmake SDL2 fltk pango rust-analyzer pkg-config libusb ];
-        embeddedDeps = with pkgs; [ probe-rs gcc-arm-embedded qemu gdb openocd clang lld (getRust { withEmbedded = true; nightly = true; }) ];
+        embeddedDeps = with pkgs; [ probe-rs gcc-arm-embedded gdb openocd clang lld (getRust { withEmbedded = true; nightly = true; }) ];
         androidDeps = with pkgs; [ cargo-ndk jdk gnupg (getRust { fullAndroid = true; }) ];
         iosDeps = with pkgs; [ (getRust { withIos = true; }) ];
       in
@@ -87,10 +87,10 @@
           LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
         };
         devShells.embedded = pkgs.mkShell {
-          buildInputs = defaultDeps ++ embeddedDeps ++ [ packages.hal ];
+          buildInputs = defaultDeps ++ embeddedDeps ++ [ packages.hal packages.qemuPortal ];
 
           LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
-          CC_thumbv7em_none_eabihf = "clang-17";
+          CC_thumbv7em_none_eabihf = "clang-18";
           CFLAGS_thumbv7em_none_eabihf = "-flto -fno-data-sections -fno-function-sections -fno-PIC -fno-stack-protector --target=thumbv7em-none-eabihf -mcpu=cortex-m4 -mthumb -I${pkgs.clang_17}/resource-root/include/ -I${pkgs.gcc-arm-embedded}/arm-none-eabi/include";
         };
         devShells.android = pkgs.mkShell rec {
@@ -135,8 +135,15 @@
           };
         };
 
-        packages.smallQemu = let
-            qemu' = pkgs.qemu.override { hostCpuTargets = ["arm-softmmu"]; };
+        packages.qemuPortal = let
+            qemu' = (pkgs.qemu.override { hostCpuTargets = ["arm-softmmu"]; }).overrideAttrs(old: rec {
+              version = "v9.0.0-portal.3";
+              src = pkgs.fetchurl {
+                url = "https://github.com/TwentyTwoHW/qemu-portal/releases/download/${version}/qemu-${version}.tar.xz";
+                hash = "sha256-TWyohs/boXd04J4j69qPNZgD00aGrNI7Frqd4vIqwkQ=";
+              };
+              sourceRoot = ".";
+            });
           in
           pkgs.writeShellScriptBin "qemu-system-arm" ''
             exec ${qemu'}/bin/qemu-system-arm "$@"
@@ -147,13 +154,13 @@
         packages.model = pkgs.callPackage ./model { inherit pkgs; craneLib = getCrane { withEmbedded = false; }; };
         packages.sdk = pkgs.callPackage ./sdk { inherit pkgs; craneLib = getCrane { withEmbedded = false; }; };
 
-        packages.firmware-emulator = pkgs.callPackage ./firmware rec {
+        packages.firmware-development = pkgs.callPackage ./firmware rec {
           inherit pkgs;
           rustToolchain = getRust { withEmbedded = true; nightly = true; };
           craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
-          variant = "emulator";
+          production = false;
         };
-        packages.firmware-device = packages.firmware;
+        packages.firmware-production = packages.firmware;
         packages.firmware = pkgs.callPackage ./firmware rec {
           inherit pkgs;
           rustToolchain = getRust { withEmbedded = true; nightly = true; };
@@ -161,7 +168,7 @@
         };
 
         packages.docker.emulatorImage = pkgs.callPackage ./docker/emulator.nix { inherit pkgs packages; };
-        packages.docker.devEnvironment = pkgs.callPackage ./docker/embedded-dev.nix { inherit pkgs packages getRust; };
+        packages.docker.devEnvironment = pkgs.callPackage ./docker/embedded-dev.nix { inherit pkgs packages devShells getRust; };
       }
     );
 }

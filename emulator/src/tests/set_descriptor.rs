@@ -36,7 +36,7 @@ async fn test_get_xpub(mut tester: Tester) -> Result<(), crate::Error> {
         .await?;
 
     tester.display_assertion("iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAAByklEQVR4nO2XiY4CIQxA6f9/dFdtoTfDbOK6idU4GUuPB7QcMD78aYAGaIAGaAANgHsihJ0YydIrJUZogsB1hDOAojlKnxIljQCk8Pg+21609I5KmyVak6z5VWu+fuxnakE9BexzUAAOQcbKLGk1+GZcUFBD//MpEEV5Wm7fGgHshFN2cb8uAeIIgOqMHYHHy+kIkFnIiVgFWQ4MnegrB8ih1jTPkAPZCJVVt68I/NXyEYL/NYBbAXop/ucAXFRSxLYM9LoX5JLyRp76qQDUkjoLztbhyAPRmg3oA02Z97MHoKW5BJDN4TrQEYCQr6BYALgeGvlGfw+AIlg+XA7YCbKONLdviSAjBZBVFVRvosPKH1r6o/gZwBpfUggOXSp6ea2fxfd6Kg+SOQ21lfWz1E/jvwEg81HHzwAgqcYBcSNC6wAh33NkM0/rvveCBmiABmiAzwNgAyQSWIdbuVzruyfgsgM5oNLfeZKe++q6kLPsEGA+hrLiN76Po+VFb8s3bK0CsilvAcbsowfgg/q6M6QAQwVTFncADkYA4RIAZZhAHbbeD7BsLcBquJWEahjtFChPwFmXJuE8zeEdgK9bB3ovaIAGaICvB/gBcI2wRnoFKhcAAAAASUVORK5CYII=", None).await?;
-    tester.tsc(true).await?;
+    tester.release_and_press().await?;
 
     tester.display_assertion(super::PORTAL_READY, None).await?;
 
@@ -89,23 +89,26 @@ async fn test_set_descriptor_sorted_multisig(mut tester: Tester) -> Result<(), c
 
     for assertion in sequence {
         tester.display_assertion(assertion, None).await?;
-        tester.tsc(true).await?;
+        tester.release_and_press().await?;
     }
 
     tester.display_assertion("iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAAB7ElEQVR4nO2YgXIDIQhE4f8/epvkBBfQa9M0bTMhMzW5E/G5olhV/vjTAA3QAA3QAFcAVA4cFRu8Te3S/HgJPQGAFoPL477JtvYRANMBivlq/Lx+Xf6mj1I72vKMHqoezW4lW3KpzDg6U3OFw4fgcKDuu9SuFIB3fivd0uyPMgMoKwyqnQC11kakHCYiyj5NNhliJQWgDwF4YLhKWhRIsWDPKmFGAoC/SZ3VWl9OGhSIMUCRJrPsjagB/gvAiN8QxipxWYuWZ5RRjAWBzeBQ+twBILnVSmfPjGrbtm82iywW220AIN8HWNjfA2Dg8Ew9RjRGNnYSzZ2Z9AFg921+HQBCezTmrob5LtbPueRZUwbwPlLH5GIzBQmgjGBhZyOAp3h71hQXCehxgCJXiAe2W/n7PYAvKRAiTGq8fAJAbUNIrGKhxgClT55Db03BEzcUl46GGBJ0WEW0WuIqOP3gqfv1KwB0Om6ABmiAJwOgAfinzrQ8cyKdJ8ahkDIh2M7+CQZlQHYQsv0GwArjmWRCtxej3Wxh2Tu2VSw8K4LqDODsGcDuG/j456fkpEq4sMF6aCTAvQpApShAU+AKJYB5sTZNfg6A7PyCqUxBcX8ehFPLNAUMJX6IY1AKwgXAaRC+6z7QuaABGqAB3h7gA9QABVWY+g8IAAAAAElFTkSuQmCC", None).await?;
     tester.display_assertion("iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAAB9ElEQVR4nO2YgXLCMAiG4f0fmmkT4CeQOqe7eie7W6sJIV9+kKRluvivARqgARqgAe4AkjlkdGzwNr2l+WgUPgEQTga3r/sh295XAFQHYfGm+fF+u/27j9Q7x2JEh6pj2HFFS7wyMs7JWF3J8EEyHLD5Tr2VAmKTH1ezVPtxXQEYFRbodYDcqytiTBMiRp8qG02xFgWEXwKwxDCVOCmw5IJ+ZwoRCQDWskyWe+3nxEGBmAOQaeTXLkQN8DEAoYxhOofKtuk8GffQjsuRhSN5GuB3dlzaXgZw1OxRQEj3jmkjtnPPwk5wh3ZJoZz95D7Z/DsA1GgJc/jUca4A4O3uGe18dWavraFAgkFYd1gMSQ0QFNER3nZMlvyHEFQAnv0rgHC81wB+Ltj43wKYRK7oXwAw3iFUD0MQErHIAZXUpX0Qc9sHuUrCKksxe61Qic22rrr8deTMpVWpN5bicBrgfTGJ7f8DAPUjVfSlvXfDBmiABrgeQBoAP/pOR36OgXPFPPSRP4sK2ulDMJ4R0AGc2GQHoBflcTKCtxdzHBxI5nYex7IUnlmC6ghg7CuAvm8A9vVk5A7wEVzqpYEAzyogTEkBCIEptAD4izU3eR8A2NkLphSC5P48CV3LJQQIRfgQUSVhAXCahN9aB3ovaIAGaICvB/gBrTgKVXrveZIAAAAASUVORK5CYII=", None).await?;
     tester.display_assertion("iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAAB7ElEQVR4nO2YgXIDIQhE4f8/epvkBBfQa9M0bTMhMzW5E/G5olhV/vjTAA3QAA3QAFcAVA4cFRu8Te3S/HgJPQGAFoPL477JtvYRANMBivlq/Lx+Xf6mj1I72vKMHqoezW4lW3KpzDg6U3OFw4fgcKDuu9SuFIB3fivd0uyPMgMoKwyqnQC11kakHCYiyj5NNhliJQWgDwF4YLhKWhRIsWDPKmFGAoC/SZ3VWl9OGhSIMUCRJrPsjagB/gvAiN8QxipxWYuWZ5RRjAWBzeBQ+twBILnVSmfPjGrbtm82iywW220AIN8HWNjfA2Dg8Ew9RjRGNnYSzZ2Z9AFg921+HQBCezTmrob5LtbPueRZUwbwPlLH5GIzBQmgjGBhZyOAp3h71hQXCehxgCJXiAe2W/n7PYAvKRAiTGq8fAJAbUNIrGKhxgClT55Db03BEzcUl46GGBJ0WEW0WuIqOP3gqfv1KwB0Om6ABmiAJwOgAfinzrQ8cyKdJ8ahkDIh2M7+CQZlQHYQsv0GwArjmWRCtxej3Wxh2Tu2VSw8K4LqDODsGcDuG/j456fkpEq4sMF6aCTAvQpApShAU+AKJYB5sTZNfg6A7PyCqUxBcX8ehFPLNAUMJX6IY1AKwgXAaRC+6z7QuaABGqAB3h7gA9QABVWY+g8IAAAAAElFTkSuQmCC", None).await?;
-    tester.tsc(true).await?;
+    tester.release_and_press().await?;
 
     tester.display_assertion("iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAAAAAD3vSCjAAABxklEQVR4nO2X7XaDIAyGk/u/6KyrId9OnOzYHdMfVAXCQwh5AeHmXwM0QAM0QAM0wKcD0J9T4sH4KOWNADcugQGgrbXxCYXur4/EX7hqxoGzMcBDotokwdG2KO1M9SUA7wdrOBuXL/ZBXq8C0GiuANGAGZerFgLkpc9mgwesE65vwzG0iT2KGD48nCuWBCE4P+i+qJIGmdA92MqtBQ3w+QCS8X8nTPu9eKfghIHzoqxtd3uNXDEPsGbeNYCkFE2zFB1vlfZVHRRHu4tMoO1VWGbrLqkaocmO94nO6bIVyJChSecRLPNXDGob9VQDlSDBVitUAmTLUvczwK4HSgCR7DmArTwL4HTGAxxhJw8ARGEtTju1KYjLDzY8is1bnaPEA+UuiABOl6UxpiWQOebG8ZhqAE7v8IXH9X8HsPyy1nIsJ9cnA4zLg8qazanvEvWQjxAuRuSvjtucREWCeYxZXABGAaCD8dPWKV+45CUb4OpY+20lDjQyVwmQktsUgPybgwIDAE9EJH3aA4Q7AG+bEC5jslxij8dGKaT+KoBzfAHg/YNQLoGPjRiEfkTGhjAEuHMZuhD1FEUQPj0PtBY0QAM0wOMBvgAtdbdGTwGJhgAAAABJRU5ErkJggg==", None).await?;
-    tester.tsc(true).await?;
+    tester.release_and_press().await?;
 
     tester.display_assertion(super::PORTAL_READY, None).await?;
 
     tester.nfc_assertion(model::Reply::Ok).await?;
 
     tester.nfc(NfcAction::RequestDescriptors).await?;
-    tester.tsc(true).await?;
+    tester
+        .display_assertion(super::REQUEST_DESCRIPTOR, None)
+        .await?;
+    tester.release_and_press().await?;
     tester
         .nfc_assertion(model::Reply::Descriptor {
             external: "wsh(sortedmulti(1,[73c5da0a/48'/1'/0'/2']tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheQ/0/*,[3977ad96/48'/1'/0'/2']tpubDE2WqbYnigRFTi6h4Km571hyX5umkEUvgLUa8kuB7tWXeBD6ffvbXqM2adiWoX9cpwQC9EQakVhy82yeCvwy1RHJVzFaC1ffhNVmEphWuEk/0/*))#4m4ang0j".into(),
@@ -140,7 +143,10 @@ async fn test_set_descriptor_sorted_multisig_missing_key(
         .await?;
 
     tester.nfc(NfcAction::RequestDescriptors).await?;
-    tester.tsc(true).await?;
+    tester
+        .display_assertion(super::REQUEST_DESCRIPTOR, None)
+        .await?;
+    tester.release_and_press().await?;
     tester
         .nfc_assertion(model::Reply::Descriptor {
             external: super::WPKH_EXTERNAL_DESC.to_string(),
@@ -189,7 +195,10 @@ async fn test_set_descriptor_non_sorted_multisig(mut tester: Tester) -> Result<(
     tester.display_assertion(super::PORTAL_READY, None).await?;
 
     tester.nfc(NfcAction::RequestDescriptors).await?;
-    tester.tsc(true).await?;
+    tester
+        .display_assertion(super::REQUEST_DESCRIPTOR, None)
+        .await?;
+    tester.release_and_press().await?;
     tester
         .nfc_assertion(model::Reply::Descriptor {
             external: super::WPKH_EXTERNAL_DESC.to_string(),
@@ -232,7 +241,10 @@ async fn test_set_descriptor_multisig_invalid_threshold(
     tester.display_assertion(super::PORTAL_READY, None).await?;
 
     tester.nfc(NfcAction::RequestDescriptors).await?;
-    tester.tsc(true).await?;
+    tester
+        .display_assertion(super::REQUEST_DESCRIPTOR, None)
+        .await?;
+    tester.release_and_press().await?;
     tester
         .nfc_assertion(model::Reply::Descriptor {
             external: super::WPKH_EXTERNAL_DESC.to_string(),
@@ -265,7 +277,7 @@ async fn test_set_descriptor_pkh(mut tester: Tester) -> Result<(), crate::Error>
 
     for assertion in sequence {
         tester.display_assertion(assertion, None).await?;
-        tester.tsc(true).await?;
+        tester.release_and_press().await?;
     }
 
     tester.display_assertion(super::PORTAL_READY, None).await?;
@@ -273,7 +285,10 @@ async fn test_set_descriptor_pkh(mut tester: Tester) -> Result<(), crate::Error>
     tester.nfc_assertion(model::Reply::Ok).await?;
 
     tester.nfc(NfcAction::RequestDescriptors).await?;
-    tester.tsc(true).await?;
+    tester
+        .display_assertion(super::REQUEST_DESCRIPTOR, None)
+        .await?;
+    tester.release_and_press().await?;
     tester
         .nfc_assertion(model::Reply::Descriptor {
             external: "pkh([73c5da0a/48'/1'/0'/2']tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheQ/0/*)#j4l5ela5".into(),
@@ -303,7 +318,10 @@ async fn test_set_descriptor_pkh_external_key(mut tester: Tester) -> Result<(), 
         .await?;
 
     tester.nfc(NfcAction::RequestDescriptors).await?;
-    tester.tsc(true).await?;
+    tester
+        .display_assertion(super::REQUEST_DESCRIPTOR, None)
+        .await?;
+    tester.release_and_press().await?;
     tester
         .nfc_assertion(model::Reply::Descriptor {
             external: super::WPKH_EXTERNAL_DESC.to_string(),
@@ -332,7 +350,7 @@ async fn common_set_descriptor_sequence(mut tester: Tester) -> Result<(), crate:
 
     for assertion in sequence {
         tester.display_assertion(assertion, None).await?;
-        tester.tsc(true).await?;
+        tester.release_and_press().await?;
     }
 
     tester.display_assertion(super::PORTAL_READY, None).await?;
@@ -340,7 +358,10 @@ async fn common_set_descriptor_sequence(mut tester: Tester) -> Result<(), crate:
     tester.nfc_assertion(model::Reply::Ok).await?;
 
     tester.nfc(NfcAction::RequestDescriptors).await?;
-    tester.tsc(true).await?;
+    tester
+        .display_assertion(super::REQUEST_DESCRIPTOR, None)
+        .await?;
+    tester.release_and_press().await?;
     tester
         .nfc_assertion(model::Reply::Descriptor {
             external: "pkh([73c5da0a/48'/1'/0'/2']tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheQ/0/*)#j4l5ela5".into(),
@@ -358,7 +379,10 @@ async fn common_set_descriptor_sequence(mut tester: Tester) -> Result<(), crate:
     tester.display_assertion(super::PORTAL_READY, None).await?;
 
     tester.nfc(NfcAction::RequestDescriptors).await?;
-    tester.tsc(true).await?;
+    tester
+        .display_assertion(super::REQUEST_DESCRIPTOR, None)
+        .await?;
+    tester.release_and_press().await?;
     tester
         .nfc_assertion(model::Reply::Descriptor {
             external: "pkh([73c5da0a/48'/1'/0'/2']tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheQ/0/*)#j4l5ela5".into(),

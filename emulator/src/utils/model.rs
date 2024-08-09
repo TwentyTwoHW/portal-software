@@ -19,32 +19,15 @@ use core::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use model::bitcoin::hex::HexToArrayError;
-
 use embedded_graphics::pixelcolor::Gray8;
 use embedded_graphics_simulator::OutputImage;
 
-#[derive(Debug, Clone)]
-pub struct Entropy(pub [u8; 32]);
-
-pub fn parse_entropy(s: &str) -> Result<Entropy, String> {
-    Ok(Entropy(
-        model::bitcoin::hashes::hex::FromHex::from_hex(s)
-            .map_err(|e: HexToArrayError| e.to_string())?,
-    ))
-}
-
-pub fn get_entropy(arg: &Option<Entropy>) -> [u8; 32] {
+pub fn get_entropy(arg: &Option<u64>) -> u64 {
     use rand::RngCore;
 
     match arg {
-        Some(ref val) => val.0,
-        None => {
-            let mut entropy = [0x00; 32];
-            rand::thread_rng().fill_bytes(&mut entropy);
-
-            entropy
-        }
+        Some(ref val) => *val,
+        None => rand::thread_rng().next_u64(),
     }
 }
 
@@ -95,7 +78,6 @@ pub enum TestAction {
     Nfc(NfcAction),
     Input(bool),
     WaitTicks(usize),
-    WipeFlash,
     Reset(bool),
 }
 
@@ -104,7 +86,7 @@ pub enum TestAssertion {
     NfcResponse(model::Reply, bool),
     Display {
         content: String,
-        timeout_ticks: Option<usize>,
+        timeout_updates: Option<usize>,
     },
 }
 

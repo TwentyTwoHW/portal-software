@@ -3,6 +3,8 @@ resolver = "2"
 
 members = [
     "emulator",
+    "emulator/ssd1306-emulator",
+    "emulator/nt3h-emulator",
     "gui",
     "model",
     "dummy-uniffi",

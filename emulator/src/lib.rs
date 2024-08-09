@@ -17,7 +17,6 @@
 
 #[cfg(feature = "gui")]
 pub mod gui;
-pub mod link;
 #[cfg(test)]
 mod tests;
 pub mod utils;

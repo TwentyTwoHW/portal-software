@@ -17,8 +17,10 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use model::emulator::EmulatorMessage;
 use tokio::process::Command as ProcessCommand;
 use tokio::sync::mpsc;
 
@@ -30,7 +32,7 @@ use embedded_graphics_simulator::{BinaryColorTheme, OutputSettingsBuilder};
 
 use clap::{Args, Parser};
 
-use emulator::link::try_pull_msg;
+use emulator::utils::try_pull_msg;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -41,32 +43,19 @@ struct CliArgs {
 
 #[derive(Debug, Args)]
 struct GlobalOpts {
-    /// Path for the UNIX socket of QEMU's serial port
-    ///
-    /// Used only when `--no-auto-qemu` is enabled, otherwise an instance of QEMU
-    /// is spawned internall
-    #[clap(long, short = 's', default_value = "./firmware/serial1.socket")]
-    emulator_socket: PathBuf,
-
     #[clap(
         long,
         short = 'f',
-        default_value = "./firmware/target/thumbv7em-none-eabihf/debug/firmware"
+        default_value = "./firmware/target/thumbv7em-none-eabihf/release/firmware"
     )]
-    /// Path of the firmware ELF file
-    ///
-    /// Used when spawning a QEMU instance internally
+    /// Path of the firmware ELF file.
     firmware: PathBuf,
 
-    /// Do not launch QEMU internally
-    ///
-    /// This will make the emulator connect to the UNIX socket specified with `--emulator-socket`
-    #[clap(long, action = clap::ArgAction::SetTrue, default_value_t = false)]
-    no_auto_qemu: bool,
+    #[clap(long, short = 'b', default_value = "1")]
+    /// Bank to flash the firmware file to.
+    flash_to_bank: usize,
 
     /// Whether to print emulated firmware logs to the emulator's stderr
-    ///
-    /// This only has an effect when spawning QEMU internally
     #[clap(long, short = 'j', action = clap::ArgAction::SetTrue, default_value_t = false)]
     join_logs: bool,
 
@@ -84,15 +73,12 @@ struct GlobalOpts {
     firmware_src_directory: PathBuf,
 
     /// Port to bind the GDB server to
-    ///
-    /// Only used when QEMU is spawned internally
     #[clap(long)]
     listen_gdb: Option<u16>,
 
     /// Whether to wait for GDB to attach before running the firmware
     ///
-    /// Only used when QEMU is spawned internally for a gui session with
-    /// GDB enabled (--listen-gdb).
+    /// Must be used in conjunction with GDB enabled (--listen-gdb).
     #[clap(long, action = clap::ArgAction::SetTrue, default_value_t = false)]
     wait_gdb: bool,
 
@@ -102,23 +88,43 @@ struct GlobalOpts {
     #[clap(long)]
     flash_file: Option<PathBuf>,
 
+    /// Do not write firmware to flash
+    ///
+    /// If enabled overwrite the firmware in the given flash file
+    #[clap(long, short = 'w', action = clap::ArgAction::SetTrue, default_value_t = false)]
+    no_write_firmware: bool,
+
     /// Entropy used to seed the device
     ///
-    /// If unspecified it will be generated randomly. Must be a 32-byte hex string
-    #[clap(long, short = 'e', value_parser = emulator::utils::model::parse_entropy)]
-    entropy: Option<emulator::utils::model::Entropy>,
+    /// If unspecified it will be generated randomly.
+    #[clap(long, short = 'e')]
+    entropy: Option<u64>,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), emulator::Error> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    })
+    .expect("Error setting Ctrl-C handler");
+
     let args = CliArgs::parse();
 
     if !args.global_opts.no_cargo_build {
         log::info!("Building firmware...");
 
-        let cmd_args = vec!["build"];
+        let cmd_args = vec![
+            "build",
+            "--no-default-features",
+            "--features",
+            "device",
+            "--release",
+        ];
+        log::debug!("Cardo build args: {:?}", cmd_args);
 
         let status = ProcessCommand::new("cargo")
             .current_dir(&args.global_opts.firmware_src_directory)
@@ -141,17 +147,14 @@ async fn main() -> Result<(), emulator::Error> {
         .into());
     }
 
-    let mut emulator = emulator::utils::get_emulator_instance(
-        !args.global_opts.no_auto_qemu,
-        &args.global_opts.emulator_socket,
+    let mut emulator = emulator::utils::EmulatorInstance::spawn_qemu(
         &args.global_opts.firmware,
+        !args.global_opts.no_write_firmware,
+        args.global_opts.flash_to_bank,
         args.global_opts.join_logs,
-        args.global_opts
-            .flash_file
-            .and_then(|f| Some(emulator::utils::get_flash_file(&f)))
-            .transpose()?,
         args.global_opts.listen_gdb,
         args.global_opts.wait_gdb,
+        args.global_opts.flash_file.map(|p| (p, true)),
         emulator::utils::model::get_entropy(&args.global_opts.entropy),
     )
     .await?;
@@ -162,9 +165,13 @@ async fn main() -> Result<(), emulator::Error> {
         .theme(BinaryColorTheme::OledWhite)
         .build();
 
-    let output_image = emulator.display.to_grayscale_output_image(&output_settings);
+    let output_image = emulator
+        .display
+        .surface
+        .to_grayscale_output_image(&output_settings);
     let output_image_large = emulator
         .display
+        .surface
         .to_grayscale_output_image(&output_settings_large);
     let fb = Arc::new(std::sync::RwLock::new(output_image));
     let fb_large = Arc::new(std::sync::RwLock::new(output_image_large));
@@ -182,14 +189,10 @@ async fn main() -> Result<(), emulator::Error> {
     });
 
     let (log_s, mut log_r) = mpsc::unbounded_channel::<String>();
+    let (cmd_s, mut cmd_r) = mpsc::unbounded_channel();
     let app = fltk::app::App::default().with_scheme(app::Scheme::Gtk);
-    let mut emulator_gui = emulator::gui::init_gui(
-        fb.clone(),
-        fb_large.clone(),
-        emulator.card.clone(),
-        sdk.clone(),
-        log_s,
-    );
+    let mut emulator_gui =
+        emulator::gui::init_gui(fb.clone(), fb_large.clone(), cmd_s, sdk.clone(), log_s);
 
     app::add_idle3(move |_| {
         emulator_gui.window.redraw();
@@ -204,40 +207,60 @@ async fn main() -> Result<(), emulator::Error> {
         console.scroll(i32::MAX, 0);
     }
 
-    while app.wait() {
-        while let Some(_) = try_pull_msg(&mut emulator.msgs.finish_boot)? {
-            log::info!("Card was reset, performing Noise handshake again...");
+    while app.wait() && running.load(Ordering::SeqCst) {
+        // while let Some(_) = try_pull_msg(&mut emulator.msgs.finish_boot)? {
+        //     log::info!("Card was reset, performing Noise handshake again...");
 
-            let entropy = emulator::utils::model::get_entropy(&args.global_opts.entropy);
-            emulator
-                .card
-                .send(model::emulator::EmulatorMessage::Entropy(entropy))
-                .unwrap();
-            emulator
-                .card
-                .send(model::emulator::EmulatorMessage::Rtc(emulator.rtc))
-                .unwrap();
+        //     let entropy = emulator::utils::model::get_entropy(&args.global_opts.entropy);
+        //     emulator
+        //         .card
+        //         .send(model::emulator::EmulatorMessage::Entropy(entropy))
+        //         .unwrap();
+        //     emulator
+        //         .card
+        //         .send(model::emulator::EmulatorMessage::Rtc(emulator.rtc))
+        //         .unwrap();
 
-            sdk.new_tag().await.expect("New tag");
-        }
+        //     sdk.new_tag().await.expect("New tag");
+        // }
 
-        emulator::link::manage_hw(
-            &mut emulator,
-            append_to_console,
-            &mut emulator_gui.console,
-            true,
-            true,
-        )
-        .await?;
+        // emulator::link::manage_hw(
+        //     &mut emulator,
+        //     append_to_console,
+        //     &mut emulator_gui.console,
+        //     true,
+        //     true,
+        // )
+        // .await?;
 
         while let Some(s) = try_pull_msg::<String>(&mut log_r)? {
             append_to_console("", &s, &mut emulator_gui.console);
         }
 
+        while let Some(_) = try_pull_msg(&mut emulator.display.update)? {
+            emulator
+                .display
+                .sram
+                .lock()
+                .await
+                .draw(&mut emulator.display.surface)?;
+        }
+
+        while let Some(msg) = try_pull_msg(&mut cmd_r)? {
+            match msg {
+                EmulatorMessage::Tsc(v) => emulator.tsc.send(v)?,
+                EmulatorMessage::Reset => {
+                    emulator.reset(false).await?;
+                    emulator.sdk.new_tag().await?;
+                }
+                _ => {}
+            }
+        }
+
         let mut fb = fb.write().unwrap();
-        fb.update(&emulator.display);
+        fb.update(&emulator.display.surface);
         let mut fb_large = fb_large.write().unwrap();
-        fb_large.update(&emulator.display);
+        fb_large.update(&emulator.display.surface);
     }
 
     Ok(())
