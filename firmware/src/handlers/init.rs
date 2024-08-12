@@ -243,6 +243,7 @@ pub(super) fn make_wallet_from_xprv(
 
     let wallet = bdk_wallet::Wallet::create(descriptor_external, descriptor_internal)
         .network(network)
+        .lookahead(0)
         .create_wallet_no_persist()?;
 
     Ok(PortalWallet::new(wallet, xprv, config))
