@@ -32,11 +32,11 @@ pkgs.dockerTools.buildLayeredImage {
   tag = "latest";
   contents = pkgs.buildEnv {
     name = "image-root";
-    paths = [ pkgs.bash emulatorScript runVnc hostname qemuOnlyArm firmwareOnly pkgs.gcc-arm-embedded pkgs.novnc pkgs.coreutils pkgs.xvfb-run pkgs.x11vnc pkgs.procps pkgs.gnugrep ];
+    paths = [ pkgs.bash emulatorScript runVnc hostname qemuOnlyArm firmwareOnly pkgs.novnc pkgs.coreutils pkgs.xvfb-run pkgs.x11vnc pkgs.procps pkgs.gnugrep ];
     pathsToLink = [ "/bin" "/etc" "/var" ];
   };
   config = {
-    Cmd = [ "run-server" "--firmware" "/bin/firmware" ];
+    Cmd = [ "run-server" "--firmware" "/bin/firmware.bin" ];
     ExposedPorts = { "2222/tcp" = {}; "5900/tcp" = {}; };
   };
 }

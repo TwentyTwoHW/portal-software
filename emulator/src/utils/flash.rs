@@ -86,20 +86,38 @@ impl Flash {
         load_to_bank: usize,
     ) -> io::Result<()> {
         let tempdir = self._tmpdir.get_or_insert_with(Self::get_tempdir);
-        let bin_file = tempdir.path().join("firmware.bin");
 
-        process::Command::new("arm-none-eabi-objcopy")
-            .args(&[
-                "-O",
-                "binary",
-                firmware_path.as_os_str().to_str().unwrap(),
-                bin_file.as_os_str().to_str().unwrap(),
-            ])
-            .output()
-            .await
-            .expect("Unable to extract firmware binary");
+        let bin_file = match firmware_path.extension() {
+            Some(ext) if ext == "bin" => {
+                log::debug!("Not extracting from a raw binary firmware...");
+                firmware_path.into()
+            }
+            _ => {
+                let bin_file = tempdir.path().join("firmware.bin");
 
-        log::debug!("Extracted firmware binary to path {}", bin_file.display());
+                let output = process::Command::new("arm-none-eabi-objcopy")
+                    .args(&[
+                        "-O",
+                        "binary",
+                        firmware_path.as_os_str().to_str().unwrap(),
+                        bin_file.as_os_str().to_str().unwrap(),
+                    ])
+                    .output()
+                    .await
+                    .expect("Unable to run arm-none-eabi-objcopy");
+                if !output.status.success() {
+                    log::error!("Unable to extract firmware from ELF");
+                    return Err(io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        String::from_utf8_lossy(&output.stderr),
+                    ));
+                }
+
+                log::debug!("Extracted firmware binary to path {}", bin_file.display());
+
+                bin_file
+            }
+        };
 
         let mut firmware_content = vec![];
         fs::File::open(&bin_file)
