@@ -137,10 +137,10 @@
 
         packages.qemuPortal = let
             qemu' = (pkgs.qemu.override { hostCpuTargets = ["arm-softmmu"]; }).overrideAttrs(old: rec {
-              version = "v9.0.0-portal.3";
+              version = "v9.0.0-portal.4";
               src = pkgs.fetchurl {
                 url = "https://github.com/TwentyTwoHW/qemu-portal/releases/download/${version}/qemu-${version}.tar.xz";
-                hash = "sha256-TWyohs/boXd04J4j69qPNZgD00aGrNI7Frqd4vIqwkQ=";
+                hash = "sha256-88q0pmb2F4DKPfnCz3/FTkibQD7ACXMslZfMTc5F2/k=";
               };
               sourceRoot = ".";
             });

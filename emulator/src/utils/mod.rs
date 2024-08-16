@@ -251,7 +251,11 @@ async fn spawn_support_tasks(
                 let mut buf = [0u8; 1];
                 match lock.read_exact(&mut buf).await {
                     Err(_) => true,
-                    Ok(_) => lock.write_all(&[v_copy]).await.is_err(),
+                    Ok(_) if lock.write_all(&[v_copy]).await.is_ok() => {
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        false
+                    }
+                    _ => true,
                 }
             };
             let stop = futures::select! {
