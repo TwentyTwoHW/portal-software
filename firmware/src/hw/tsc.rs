@@ -62,6 +62,10 @@ where
         }
     }
 
+    pub fn clear_interrupt(&mut self) {
+        self.tsc.clear(hal::tsc::Event::EndOfAcquisition);
+    }
+
     pub fn perform_read(&self) -> bool {
         self.tsc.read_unchecked() < TSC_THRESHOLD
     }

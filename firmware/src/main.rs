@@ -377,14 +377,13 @@ mod app {
 
     #[task(binds = TSC, local = [tsc])]
     fn tsc_interrupt(_cx: tsc_interrupt::Context) {
-        #[cfg(feature = "device")]
-        {
-            let (ref mut tsc, ref mut channel) = _cx.local.tsc;
+        let (ref mut tsc, ref mut channel) = _cx.local.tsc;
 
-            if tsc.is_enabled() {
-                let _ = channel.try_send(tsc.perform_read());
-                tsc.start_acquisition();
-            }
+        if tsc.is_enabled() {
+            let _ = channel.try_send(tsc.perform_read());
+            tsc.start_acquisition();
+        } else {
+            tsc.clear_interrupt();
         }
     }
 }
