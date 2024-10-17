@@ -23,6 +23,10 @@ export class PortalSdk {
       .catch((e: any) => console.warn(e))
   }
 
+  destroy() {
+    LibportalReactNative.destructor()
+  }
+
   poll(): Promise<NfcOut> {
     return LibportalReactNative.poll()
   }
@@ -74,8 +78,25 @@ export class PortalSdk {
     return LibportalReactNative.publicDescriptors();
   }
 
+  getXpub(derivationPath: string): Promise<GetXpubData> {
+    return LibportalReactNative.getXpub(derivationPath);
+  }
+
+  setDescriptor(descriptor: string, bsms?: SetDescriptorBsmsData): Promise<void> {
+    let bsmsSerialized = null;
+    if (bsms) {
+      bsmsSerialized = JSON.stringify(bsms);
+    }
+
+    return LibportalReactNative.setDescriptor(descriptor, bsmsSerialized);
+  }
+
   updateFirmware(bytes: number[]): Promise<void> {
     return LibportalReactNative.updateFirmware(bytes);
+  }
+
+  debugWipeDevice(): Promise<void> {
+    return LibportalReactNative.debugWipeDevice();
   }
 }
 
@@ -106,4 +127,22 @@ export interface CardStatus {
   readonly unverified?: boolean,
   readonly unlocked: boolean,
   readonly network?: Network,
+}
+
+export interface GetXpubData {
+  readonly xpub: string,
+  readonly bsms: string,
+}
+
+export interface GetXpubBsms {
+  readonly version: string,
+  readonly token: string,
+  readonly keyName: string,
+  readonly signature: string,
+}
+
+export interface SetDescriptorBsmsData {
+  readonly version: string,
+  readonly pathRestrictions: string,
+  readonly firstAddress: string,
 }

@@ -14,7 +14,7 @@ internal class UniFfiAndroidPlugin : Plugin<Project> {
         // arm64-v8a is the most popular hardware architecture for Android
         val buildAndroidAarch64Binary by tasks.register<Exec>("buildAndroidAarch64Binary") {
             workingDir("${projectDir}/../../")
-            val cargoArgs: List<String> = listOf("ndk", "-t", "arm64-v8a", "build", "--release", "--features", "android,bindings")
+            val cargoArgs: List<String> = listOf("ndk", "-t", "arm64-v8a", "build", "--release", "--features", "android,bindings,debug")
 
             executable("cargo")
             args(cargoArgs)
@@ -27,7 +27,7 @@ internal class UniFfiAndroidPlugin : Plugin<Project> {
         // the x86_64 version of the library is mostly used by emulators
         val buildAndroidX86_64Binary by tasks.register<Exec>("buildAndroidX86_64Binary") {
             workingDir("${projectDir}/../../")
-            val cargoArgs: List<String> = listOf("ndk", "-t", "x86_64", "build", "--release", "--features", "android,bindings")
+            val cargoArgs: List<String> = listOf("ndk", "-t", "x86_64", "build", "--release", "--features", "android,bindings,debug")
 
             executable("cargo")
             args(cargoArgs)
@@ -40,7 +40,7 @@ internal class UniFfiAndroidPlugin : Plugin<Project> {
         // used by some emulators
         val buildAndroidX86Binary by tasks.register<Exec>("buildAndroidX86Binary") {
             workingDir("${projectDir}/../../")
-            val cargoArgs: List<String> = listOf("ndk", "-t", "x86", "build", "--release", "--features", "android,bindings")
+            val cargoArgs: List<String> = listOf("ndk", "-t", "x86", "build", "--release", "--features", "android,bindings,debug")
 
             executable("cargo")
             args(cargoArgs)
@@ -53,7 +53,7 @@ internal class UniFfiAndroidPlugin : Plugin<Project> {
         // armeabi-v7a version of the library for older 32-bit Android hardware
         val buildAndroidArmv7Binary by tasks.register<Exec>("buildAndroidArmv7Binary") {
             workingDir("${projectDir}/../../")
-            val cargoArgs: List<String> = listOf("ndk", "-t", "armeabi-v7a", "build", "--release", "--features", "android,bindings")
+            val cargoArgs: List<String> = listOf("ndk", "-t", "armeabi-v7a", "build", "--release", "--features", "android,bindings,debug")
 
             executable("cargo")
             args(cargoArgs)

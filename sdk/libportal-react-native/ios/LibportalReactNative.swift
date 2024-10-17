@@ -29,6 +29,8 @@ class LibportalReactNative: NSObject {
         self.sdk = PortalSdk(useFastOps: useFastOps)
         resolve(nil)
     }
+
+    @objc func destructor() -> Void {}
     
     @objc func poll(_ resolve: @escaping RCTPromiseResolveBlock, withRejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
         Task {
@@ -147,7 +149,7 @@ class LibportalReactNative: NSObject {
     @objc func resume(_ resolve: @escaping RCTPromiseResolveBlock, withRejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
         Task {
             do {
-                // try await self.sdk?.resume()
+                try await self.sdk?.resume()
                 resolve(nil)
             }
             catch {
@@ -206,6 +208,74 @@ class LibportalReactNative: NSObject {
         Task {
             do {
                 try await self.sdk?.updateFirmware(binary: binary!)
+                resolve(nil)
+            }
+            catch {
+                reject("Error", error.localizedDescription, error)
+            }
+        }
+    }
+
+    @objc func getXpub(_ derivationPath: NSString, withResolver resolve: @escaping RCTPromiseResolveBlock, withRejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
+        let derivationPath = derivationPath as String
+
+        Task {
+            do {
+                let xpub = try await self.sdk?.getXpub(path: derivationPath)
+                let bsms: NSDictionary = [
+                    "version": xpub?.bsms.version as Any,
+                    "token": xpub?.bsms.token as Any,
+                    "keyName": xpub?.bsms.keyName as Any,
+                    "signature": xpub?.bsms.signature as Any,
+                ]
+                let dict: NSDictionary = [
+                    "xpub": xpub?.xpub as Any,
+                    "bsms": bsms as Any,
+                ]
+                resolve(dict)
+            }
+            catch {
+                reject("Error", error.localizedDescription, error)
+            }
+        }
+    }
+
+  @objc func setDescriptor(_ descriptor: NSString, bsms_data: NSString, withResolver resolve: @escaping RCTPromiseResolveBlock, withRejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
+        let descriptor = descriptor as String
+        let bsms_data = bsms_data as String?
+
+        struct LocalBsmsData: Codable {
+            var version: String
+            var pathRestrictions: String
+            var firstAddress: String
+        }
+
+        Task {
+            do {
+                let bsms_decoded = {
+                  do {
+                    return try bsms_data.flatMap {
+                      let decoder = JSONDecoder()
+                      let decoded = try decoder.decode(LocalBsmsData.self, from: $0.data(using: .utf8)!)
+                      return SetDescriptorBsmsData(version: decoded.version, pathRestrictions: decoded.pathRestrictions, firstAddress: decoded.firstAddress)
+                    }
+                  } catch {
+                    return nil
+                  }
+                }()
+                try await self.sdk?.setDescriptor(descriptor: descriptor, bsms: bsms_decoded)
+                resolve(nil)
+            }
+            catch {
+                reject("Error", error.localizedDescription, error)
+            }
+        }
+    }
+
+    @objc func debugWipeDevice(_ resolve: @escaping RCTPromiseResolveBlock, withRejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
+        Task {
+            do {
+                try await self.sdk?.debugWipeDevice()
                 resolve(nil)
             }
             catch {

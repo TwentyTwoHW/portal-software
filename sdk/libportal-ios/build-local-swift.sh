@@ -17,9 +17,9 @@ mkdir -p ./Sources/LibPortal
 
 pushd ../
 
-cargo build --features ios,bindings --release --target aarch64-apple-ios
-cargo build --features ios,bindings --release --target x86_64-apple-ios
-cargo build --features ios,bindings --release --target aarch64-apple-ios-sim
+cargo build --features ios,bindings,debug --release --target aarch64-apple-ios
+cargo build --features ios,bindings,debug --release --target x86_64-apple-ios
+cargo build --features ios,bindings,debug --release --target aarch64-apple-ios-sim
 
 cargo run --bin uniffi-bindgen --features bindings generate --library ../target/aarch64-apple-ios-sim/release/libportal.a --out-dir ./libportal-ios/Sources/LibPortal --language swift --no-format
 
