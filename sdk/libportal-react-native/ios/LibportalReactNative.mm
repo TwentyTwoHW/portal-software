@@ -6,6 +6,8 @@ RCT_EXTERN_METHOD(constructor: (BOOL)useFastOps
                  withResolver:(RCTPromiseResolveBlock)resolve
                  withRejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(destructor)
+
 RCT_EXTERN_METHOD(poll: (RCTPromiseResolveBlock)resolve
                  withRejecter:(RCTPromiseRejectBlock)reject)
 
@@ -52,6 +54,18 @@ RCT_EXTERN_METHOD(publicDescriptors: (RCTPromiseResolveBlock)resolve
 
 RCT_EXTERN_METHOD(updateFirmware: (NSArray)binary
                  withResolver:(RCTPromiseResolveBlock)resolve
+                 withRejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(getXpub: (NSString)derivationPath
+                 withResolver:(RCTPromiseResolveBlock)resolve
+                 withRejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(setDescriptor: (NSString)descriptor
+                 bsms_data: (NSString)bsms_data
+                 withResolver:(RCTPromiseResolveBlock)resolve
+                 withRejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(debugWipeDevice: (RCTPromiseResolveBlock)resolve
                  withRejecter:(RCTPromiseRejectBlock)reject)
 
 + (BOOL)requiresMainQueueSetup
