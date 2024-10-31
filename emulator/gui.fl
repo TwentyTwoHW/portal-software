@@ -8,7 +8,7 @@ class Emulator {open
   } {
     Fl_Window window {
       label Emulator open
-      xywh {1162 204 565 1085} type Double size_range {561 1020 561 0} visible
+      xywh {1162 204 565 1085} type Double size_range {561 980 561 0} visible
     } {
       Fl_Box display {
         xywh {25 25 511 255} labeltype NO_LABEL
@@ -64,17 +64,22 @@ class Emulator {open
             xywh {300 430 150 35}
           }
         }
-        Fl_Button get_info_btn {
-          label GetInfo
-          xywh {305 365 511 35}
-        }
-        Fl_Button public_descriptor_btn {
-          label PublicDescriptor
-          xywh {305 365 511 35}
-        }
-        Fl_Button show_mnemonic_btn {
-          label ShowMnemonic
-          xywh {305 365 511 35}
+        Fl_Pack inner_pack_10 {open
+          xywh {35 405 525 35} type HORIZONTAL
+          code0 {inner_pack_10.set_spacing(5);}
+        } {
+          Fl_Button get_info_btn {
+            label GetInfo
+            xywh {305 365 167 35}
+          }
+          Fl_Button public_descriptor_btn {
+            label PublicDescriptor
+            xywh {305 365 167 35}
+          }
+          Fl_Button show_mnemonic_btn {
+            label ShowMnemonic
+            xywh {305 365 167 35}
+          }
         }
         Fl_Pack inner_pack_3 {open
           xywh {35 405 525 35} type HORIZONTAL
@@ -141,17 +146,22 @@ class Emulator {open
             xywh {300 430 150 35}
           }
         }
-        Fl_Button resume_btn {
-          label Resume
-          xywh {315 375 511 35}
-        }
-        Fl_Button reset_btn {
-          label Reset
-          xywh {315 375 511 35}
+        Fl_Pack inner_pack_11 {open
+          xywh {35 405 525 35} type HORIZONTAL
+          code0 {inner_pack_11.set_spacing(5);}
+        } {
+          Fl_Button resume_btn {
+            label Resume
+            xywh {315 375 253 35}
+          }
+          Fl_Button reset_btn {
+            label Reset
+            xywh {315 375 253 35}
+          }
         }
       }
       Fl_Text_Display console {selected
-        xywh {25 790 511 270} labeltype NO_LABEL textfont 4
+        xywh {25 710 511 250} labeltype NO_LABEL textfont 4
         code0 {console.set_buffer(text::TextBuffer::default());}
       }
     }
