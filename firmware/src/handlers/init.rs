@@ -618,6 +618,31 @@ pub async fn handle_import_seed(
     display_mnemonic(unverified_config, events, peripherals).await
 }
 
+pub async fn handle_show_mnemonic(
+    wallet: Rc<PortalWallet>,
+    mut events: impl Stream<Item = Event> + Unpin,
+    peripherals: &mut HandlerPeripherals,
+) -> Result<CurrentState, Error> {
+    let page = LoadingPage::new();
+    page.init_display(&mut peripherals.display)?;
+    page.draw_to(&mut peripherals.display)?;
+    peripherals.display.flush()?;
+    peripherals.tsc_enabled.enable();
+
+    let mnemonic =
+        Mnemonic::from_entropy(&wallet.config.secret.mnemonic.bytes).map_err(map_err_config)?;
+    let mnemonic_str = mnemonic.word_iter().collect::<alloc::vec::Vec<_>>();
+    for (chunk_index, words) in mnemonic_str.chunks(2).enumerate() {
+        let mut page = MnemonicPage::new((chunk_index * 2) as u8, &words);
+        page.init_display(&mut peripherals.display)?;
+        page.draw_to(&mut peripherals.display)?;
+        peripherals.display.flush()?;
+
+        manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+    }
+    Ok(CurrentState::Idle { wallet })
+}
+
 pub async fn handle_unverified_config(
     config: UnverifiedConfig,
     mut events: impl Stream<Item = Event> + Unpin,

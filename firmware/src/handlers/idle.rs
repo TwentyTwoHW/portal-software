@@ -109,6 +109,12 @@ pub async fn handle_idle(
             #[cfg(not(feature = "production"))]
             Some(model::Request::WipeDevice) => break Ok(CurrentState::WipeDevice),
 
+            Some(model::Request::ShowMnemonic) => {
+                break Ok(CurrentState::ShowMnemonic {
+                    wallet: Rc::clone(wallet),
+                });
+            }
+
             Some(_) => {
                 peripherals
                     .nfc

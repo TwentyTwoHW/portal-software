@@ -72,6 +72,10 @@ class Emulator {open
           label PublicDescriptor
           xywh {305 365 511 35}
         }
+        Fl_Button show_mnemonic_btn {
+          label ShowMnemonic
+          xywh {305 365 511 35}
+        }
         Fl_Pack inner_pack_3 {open
           xywh {35 405 525 35} type HORIZONTAL
           code0 {inner_pack_3.set_spacing(5);}

@@ -169,6 +169,20 @@ pub fn init_gui(
         });
     });
 
+    let sdk_cloned = Arc::clone(&sdk);
+    let log_cloned = log.clone();
+    emulator_gui.show_mnemonic_btn.set_callback(move |_| {
+        let sdk_cloned = sdk_cloned.clone();
+        let log_cloned = log_cloned.clone();
+        tokio::spawn(async move {
+            log_cloned.send("> Show mnemonic".into()).unwrap();
+            match sdk_cloned.show_mnemonic().await {
+                Ok(v) => log_cloned.send(format!("< {:?}", v)).unwrap(),
+                Err(e) => log::warn!("Show mnemonic err: {:?}", e),
+            }
+        });
+    });
+
     let sender = sender.clone();
     emulator_gui.reset_btn.set_callback(move |_| {
         sender.send(EmulatorMessage::Reset).unwrap();

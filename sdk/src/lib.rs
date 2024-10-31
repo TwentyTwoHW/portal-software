@@ -483,6 +483,11 @@ impl PortalSdk {
         Ok(descriptor)
     }
 
+    pub async fn show_mnemonic(&self) -> Result<(), SdkError> {
+        send_with_retry!(self.requests, Request::ShowMnemonic, Ok(Reply::Mnemonic) => break Ok(()))?;
+        Ok(())
+    }
+
     pub async fn update_firmware(&self, binary: Vec<u8>) -> Result<(), SdkError> {
         // First 64 bytes are the signature, then there's the actual firmware.
         // We expect at least two pages (4K)

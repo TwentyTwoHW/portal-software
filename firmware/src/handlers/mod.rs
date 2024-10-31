@@ -69,7 +69,7 @@ pub enum CurrentState {
     POR,
     /// Empty new device
     Init,
-    /// Initialized but locked devic
+    /// Initialized but locked device
     Locked { config: model::InitializedConfig },
     /// Not yet finished to verify the config
     UnverifiedConfig { config: model::UnverifiedConfig },
@@ -85,6 +85,8 @@ pub enum CurrentState {
         network: bdk_wallet::bitcoin::Network,
         password: Option<String>,
     },
+    /// Show mnemonic on display
+    ShowMnemonic { wallet: Rc<PortalWallet> },
     /// Device ready
     Idle { wallet: Rc<PortalWallet> },
     /// Waiting to receive the PSBT
@@ -278,6 +280,16 @@ pub async fn dispatch_handler<'a>(
                 events,
                 peripherals,
             )) as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>
+        }
+        CurrentState::ShowMnemonic { wallet } => {
+            peripherals
+                .nfc
+                .send(model::Reply::DelayedReply)
+                .await
+                .unwrap();
+
+            Box::pin(init::handle_show_mnemonic(wallet, events, peripherals))
+                as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>
         }
         CurrentState::Idle { ref mut wallet } => {
             Box::pin(idle::handle_idle(wallet, events, peripherals))
