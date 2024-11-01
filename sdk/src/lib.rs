@@ -484,7 +484,7 @@ impl PortalSdk {
     }
 
     pub async fn show_mnemonic(&self) -> Result<(), SdkError> {
-        send_with_retry!(self.requests, Request::ShowMnemonic, Ok(Reply::Mnemonic) => break Ok(()))?;
+        send_with_retry!(self.requests, Request::ShowMnemonic, Ok(Reply::Ok) => break Ok(()))?;
         Ok(())
     }
 

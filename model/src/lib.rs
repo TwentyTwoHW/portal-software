@@ -1061,8 +1061,6 @@ pub enum Reply {
         #[cbor(n(1))]
         bsms: BsmsRound1,
     },
-    #[cbor(n(15))]
-    Mnemonic,
 }
 
 #[derive(Clone, Debug, Encode, Decode)]
