@@ -34,7 +34,7 @@ jobs:
           ./target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-android
     - run: nix develop .#android --command bash -c "cd sdk/libportal-android && ./gradlew publishToMavenLocal --exclude-task signMavenPublication"
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v3
       with:
         name: local-maven
         path: ~/.m2/repository/xyz/twenty-two/libportal-android/
@@ -56,7 +56,7 @@ jobs:
           ./target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-ios
     - run: nix develop .#ios --command bash -c "cd sdk/libportal-ios && PACKAGE=1 ./build-local-swift.sh"
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v3
       with:
         name: portalffi-framework
         path: ./sdk/libportal-ios/portalFFI.xcframework.zip
@@ -76,7 +76,7 @@ jobs:
     - run: nix build .#firmware-${{ matrix.target }}
     - run: sha256sum ./result/*
     - run: echo "ARTIFACTS_DIR=$(readlink ./result)" >> $GITHUB_ENV
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v3
       with:
         name: firmware-${{ matrix.target }}
         path: ${{ env.ARTIFACTS_DIR }}
@@ -100,7 +100,7 @@ jobs:
     - run: nix develop .#embedded --command bash -c "cargo build --package emulator --no-default-features"
     - run: nix develop .#embedded --command bash -c "REPORT_TMP_DIR=/tmp/portal-test-report RUST_LOG=emulator=debug cargo emu-test -- --nocapture --test-threads 1"
       timeout-minutes: 10
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v3
       if: always()
       with:
         name: test-report
