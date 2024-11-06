@@ -155,6 +155,18 @@ class LibportalReactNative: NSObject {
             }
         }
     }
+
+    @objc func showMnemonic(_ resolve: @escaping RCTPromiseResolveBlock, withRejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
+        Task {
+            do {
+                try await self.sdk?.showMnemonic()
+                resolve(nil)
+            }
+            catch {
+                reject("Error", error.localizedDescription, error)
+            }
+        }
+    }
     
     @objc func displayAddress(_ index: NSNumber, withResolver resolve: @escaping RCTPromiseResolveBlock, withRejecter reject: @escaping RCTPromiseRejectBlock) -> Void {
         let index = UInt32(truncating: index)

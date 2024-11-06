@@ -39,6 +39,9 @@ RCT_EXTERN_METHOD(unlock: (NSString)pair_code
 RCT_EXTERN_METHOD(resume: (RCTPromiseResolveBlock)resolve
                  withRejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(showMnemonic: (RCTPromiseResolveBlock)resolve
+                 withRejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(displayAddress: (nonnull NSNumber)index
                  withResolver:(RCTPromiseResolveBlock)resolve
                  withRejecter:(RCTPromiseRejectBlock)reject)
