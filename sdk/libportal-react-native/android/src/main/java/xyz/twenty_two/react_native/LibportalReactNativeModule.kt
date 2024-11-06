@@ -163,6 +163,18 @@ class LibportalReactNativeModule(reactContext: ReactApplicationContext) :
   }
 
   @ReactMethod
+  fun showMnemonic(promise: Promise) {
+    try {
+      scope.launch {
+        instance!!.showMnemonic()
+        promise.resolve(null)
+      }
+    } catch (e: Exception) {
+      promise.reject(e)
+    }
+  }
+
+  @ReactMethod
   fun displayAddress(index: Int, promise: Promise) {
     try {
       scope.launch {
