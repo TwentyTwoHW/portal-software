@@ -640,6 +640,10 @@ pub async fn handle_show_mnemonic(
 
         manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
     }
+
+    peripherals.nfc.send(model::Reply::Ok).await.unwrap();
+    peripherals.nfc_finished.recv().await.unwrap();
+
     Ok(CurrentState::Idle { wallet })
 }
 
