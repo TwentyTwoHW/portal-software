@@ -62,6 +62,10 @@ export class PortalSdk {
     return LibportalReactNative.resume();
   }
 
+  showMnemonic(): Promise<void> {
+    return LibportalReactNative.showMnemonic();
+  }
+
   displayAddress(index: number): Promise<string> {
     return LibportalReactNative.displayAddress(index);
   }
