@@ -637,11 +637,12 @@ pub async fn handle_show_mnemonic(
             .send(model::Reply::DelayedReply)
             .await
             .unwrap();
+
+        let page = LoadingPage::new();
+        page.init_display(&mut peripherals.display)?;
+        page.draw_to(&mut peripherals.display)?;
     }
 
-    let page = LoadingPage::new();
-    page.init_display(&mut peripherals.display)?;
-    page.draw_to(&mut peripherals.display)?;
     peripherals.display.flush()?;
     peripherals.tsc_enabled.enable();
 
