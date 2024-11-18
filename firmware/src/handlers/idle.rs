@@ -112,6 +112,8 @@ pub async fn handle_idle(
             Some(model::Request::ShowMnemonic) => {
                 break Ok(CurrentState::ShowMnemonic {
                     wallet: Rc::clone(wallet),
+                    resumable: checkpoint::Resumable::fresh(),
+                    is_fast_boot: false,
                 });
             }
 
