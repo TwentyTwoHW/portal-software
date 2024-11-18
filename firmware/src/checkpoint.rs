@@ -62,7 +62,10 @@ pub enum CheckpointVariant {
     Removed,
 
     #[cbor(n(8))]
-    ShowMnemonic,
+    ShowMnemonic {
+        #[cbor(n(0))]
+        is_backup: bool,
+    },
 }
 
 impl CheckpointVariant {
@@ -76,7 +79,7 @@ impl CheckpointVariant {
             CheckpointVariant::GetXpub => true,
             CheckpointVariant::PublicDescriptor => false,
             CheckpointVariant::Removed => false,
-            CheckpointVariant::ShowMnemonic => false,
+            CheckpointVariant::ShowMnemonic { .. } => false,
         }
     }
 }
@@ -365,7 +368,7 @@ impl Checkpoint {
                     Err(FlashError::CorruptedData)
                 }
             }
-            (CheckpointVariant::ShowMnemonic, _, Some(resumable)) => {
+            (CheckpointVariant::ShowMnemonic { .. }, _, Some(resumable)) => {
                 if let Some(CurrentState::Idle { wallet }) = get_config(peripherals)? {
                     Ok(CurrentState::ShowMnemonic {
                         wallet,

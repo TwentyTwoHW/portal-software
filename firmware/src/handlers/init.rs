@@ -626,7 +626,7 @@ pub async fn handle_show_mnemonic(
     is_fast_boot: bool,
 ) -> Result<CurrentState, Error> {
     let mut checkpoint = checkpoint::Checkpoint::new_with_key(
-        checkpoint::CheckpointVariant::ShowMnemonic,
+        checkpoint::CheckpointVariant::ShowMnemonic { is_backup: false },
         None,
         Some(resumable),
         checkpoint::Checkpoint::gen_key(&mut peripherals.rng),
