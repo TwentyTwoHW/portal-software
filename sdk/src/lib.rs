@@ -96,8 +96,16 @@ macro_rules! send_with_retry {
                 send_ping = false;
                 model::Request::Ping
             };
-            $channels.o.send(req).await?;
 
+            // Hold the lock until we have a reply
+            let lock = $channels.o.lock().await;
+            // Flush potential leftover replies
+            while let Ok(_) = $channels.i.try_recv() {}
+
+            // Send the request
+            lock.send(req).await?;
+
+            // Wait for the reply
             match $channels.i.recv().await? {
                 $( $match )*,
 
@@ -616,7 +624,7 @@ impl miniscript::Translator<String, String, SdkError> for BsmsTranslator {
 }
 
 struct RequestChannels {
-    o: channel::Sender<Request>,
+    o: async_std::sync::Mutex<channel::Sender<Request>>,
     i: channel::Receiver<Result<Reply, FutureError>>,
 }
 
@@ -720,7 +728,7 @@ impl InnerManager {
         };
 
         let req_channels = RequestChannels {
-            o: requests_s,
+            o: async_std::sync::Mutex::new(requests_s),
             i: replies_r,
         };
         let nfc_channels = NfcChannels {
