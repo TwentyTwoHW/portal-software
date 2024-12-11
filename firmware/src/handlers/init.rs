@@ -622,23 +622,48 @@ pub async fn handle_show_mnemonic(
     wallet: Rc<PortalWallet>,
     mut events: impl Stream<Item = Event> + Unpin,
     peripherals: &mut HandlerPeripherals,
+    mut resumable: checkpoint::Resumable,
+    is_fast_boot: bool,
 ) -> Result<CurrentState, Error> {
-    let page = LoadingPage::new();
-    page.init_display(&mut peripherals.display)?;
-    page.draw_to(&mut peripherals.display)?;
+    let mut checkpoint = checkpoint::Checkpoint::new_with_key(
+        checkpoint::CheckpointVariant::ShowMnemonic { is_backup: false },
+        None,
+        Some(resumable),
+        checkpoint::Checkpoint::gen_key(&mut peripherals.rng),
+    );
+    if !is_fast_boot {
+        peripherals
+            .nfc
+            .send(model::Reply::DelayedReply)
+            .await
+            .unwrap();
+
+        let page = LoadingPage::new();
+        page.init_display(&mut peripherals.display)?;
+        page.draw_to(&mut peripherals.display)?;
+    }
+
     peripherals.display.flush()?;
     peripherals.tsc_enabled.enable();
 
     let mnemonic =
         Mnemonic::from_entropy(&wallet.config.secret.mnemonic.bytes).map_err(map_err_config)?;
     let mnemonic_str = mnemonic.word_iter().collect::<alloc::vec::Vec<_>>();
-    for (chunk_index, words) in mnemonic_str.chunks(2).enumerate() {
+    for (chunk_index, words) in mnemonic_str.chunks(2).enumerate().skip(resumable.page) {
         let mut page = MnemonicPage::new((chunk_index * 2) as u8, &words);
         page.init_display(&mut peripherals.display)?;
         page.draw_to(&mut peripherals.display)?;
         peripherals.display.flush()?;
+        resumable.page = chunk_index;
 
-        manage_confirmation_loop(&mut events, peripherals, &mut page).await?;
+        manage_confirmation_loop_with_checkpoint(
+            &mut events,
+            peripherals,
+            &mut page,
+            &mut checkpoint,
+            resumable,
+        )
+        .await?;
     }
 
     peripherals.nfc.send(model::Reply::Ok).await.unwrap();

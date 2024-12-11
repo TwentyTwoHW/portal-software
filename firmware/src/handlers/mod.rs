@@ -86,7 +86,11 @@ pub enum CurrentState {
         password: Option<String>,
     },
     /// Show mnemonic on display
-    ShowMnemonic { wallet: Rc<PortalWallet> },
+    ShowMnemonic {
+        wallet: Rc<PortalWallet>,
+        resumable: checkpoint::Resumable,
+        is_fast_boot: bool,
+    },
     /// Device ready
     Idle { wallet: Rc<PortalWallet> },
     /// Waiting to receive the PSBT
@@ -281,16 +285,17 @@ pub async fn dispatch_handler<'a>(
                 peripherals,
             )) as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>
         }
-        CurrentState::ShowMnemonic { wallet } => {
-            peripherals
-                .nfc
-                .send(model::Reply::DelayedReply)
-                .await
-                .unwrap();
-
-            Box::pin(init::handle_show_mnemonic(wallet, events, peripherals))
-                as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>
-        }
+        CurrentState::ShowMnemonic {
+            wallet,
+            resumable,
+            is_fast_boot,
+        } => Box::pin(init::handle_show_mnemonic(
+            wallet,
+            events,
+            peripherals,
+            resumable,
+            is_fast_boot,
+        )) as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>,
         CurrentState::Idle { ref mut wallet } => {
             Box::pin(idle::handle_idle(wallet, events, peripherals))
                 as Pin<Box<dyn Future<Output = Result<CurrentState, Error>>>>
