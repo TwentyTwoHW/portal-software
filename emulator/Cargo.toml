@@ -26,7 +26,7 @@ ssd1306-emulator = { path = "./ssd1306-emulator", features = ["eg-simulator"] }
 nt3h-emulator = { path = "./nt3h-emulator" }
 
 sdk = { path = "../sdk", features = ["debug"] }
-model = { path = "../model", features = ["emulator-std"] }
+model = { package="portal-model", path = "../portal-model", features = ["emulator-std"] }
 
 fltk = { version = "^1.4", optional = true }
 ctrlc = { version = "3.4.4", optional = true }

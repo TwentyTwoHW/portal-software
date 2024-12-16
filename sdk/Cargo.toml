@@ -25,7 +25,7 @@ dummy-uniffi = { path = "../dummy-uniffi" }
 android_logger = { version = "0.13.3", optional = true }
 env_logger = { version = "0.10", optional = true }
 
-model = { path = "../model" }
+model = { package="portal-model", path = "../portal-model" }
 
 [features]
 cli-common = ["env_logger", "tokio"]

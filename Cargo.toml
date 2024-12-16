@@ -6,7 +6,7 @@ members = [
     "emulator/ssd1306-emulator",
     "emulator/nt3h-emulator",
     "gui",
-    "model",
+    "portal-model",
     "dummy-uniffi",
     "fetch-git-hash",
     "sdk",

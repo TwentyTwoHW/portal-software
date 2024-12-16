@@ -469,7 +469,7 @@ dependencies = [
  "gui",
  "log",
  "minicbor",
- "model",
+ "portal-model",
  "rand",
  "rand_chacha",
  "rtic",
@@ -604,7 +604,7 @@ name = "gui"
 version = "0.1.0"
 dependencies = [
  "embedded-graphics",
- "model",
+ "portal-model",
 ]
 
 [[package]]
@@ -727,20 +727,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "model"
-version = "0.1.0"
-dependencies = [
- "aes-gcm",
- "bip39",
- "bitcoin",
- "log",
- "minicbor",
- "modular-bitfield",
- "noise-protocol",
- "noise-rust-crypto",
-]
-
-[[package]]
 name = "modular-bitfield"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -840,6 +826,20 @@ name = "portable-atomic"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7170ef9988bc169ba16dd36a7fa041e5c4cbeb6a35b76d4c03daded371eae7c0"
+
+[[package]]
+name = "portal-model"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "bip39",
+ "bitcoin",
+ "log",
+ "minicbor",
+ "modular-bitfield",
+ "noise-protocol",
+ "noise-rust-crypto",
+]
 
 [[package]]
 name = "ppv-lite86"

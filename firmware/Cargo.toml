@@ -28,7 +28,7 @@ bitcoin_hashes = { version = "0.14.0", default-features = false, features = ["sm
 secp256k1 = { version = "0.29", default-features = false, features = ["alloc", "lowmemory"] }
 fetch-git-hash = { path = "../fetch-git-hash" }
 
-model = { path = "../model", features = ["stm32"] }
+model = { package="portal-model", path = "../portal-model", features = ["stm32"] }
 gui = { path = "../gui", features = ["stm32"] }
 
 embedded-hal = { package = "embedded-hal", version = "0.2.6", optional = true }
