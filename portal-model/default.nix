@@ -10,7 +10,7 @@ craneLib.buildPackage {
   src = craneLib.cleanCargoSource (craneLib.path ../.);
   strictDeps = true;
 
-  cargoExtraArgs = "-p model";
+  cargoExtraArgs = "-p portal-model";
   
   meta = with pkgs.lib; {
     description = "Model library for Portal software";

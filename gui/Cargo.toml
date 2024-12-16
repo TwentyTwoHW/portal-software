@@ -10,7 +10,7 @@ license = "GPL-3.0-or-later"
 embedded-graphics = "0.8"
 embedded-graphics-simulator = { version = "0.5", optional = true }
 
-model = { path = "../model", features = ["stm32"] }
+model = { package="portal-model", path = "../portal-model", features = ["stm32"] }
 
 [features]
 stm32 = ["model/stm32"]

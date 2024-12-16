@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 tokio = { version = "1.36", features = ["io-util", "time", "net", "sync"] }
 log = "0.4"
-model = { path = "../../model" }
+model = { package="portal-model", path = "../../portal-model" }
 sdk = { path = "../../sdk", features = ["debug"] }
 env_logger = { version = "0.10", optional = true }
 

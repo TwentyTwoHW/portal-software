@@ -151,7 +151,7 @@
 
         packages.emulator = pkgs.callPackage ./emulator { inherit pkgs; craneLib = getCrane { withEmbedded = false; }; };
         packages.gui-simulator = pkgs.callPackage ./gui { inherit pkgs; craneLib = getCrane { withEmbedded = false; }; };
-        packages.model = pkgs.callPackage ./model { inherit pkgs; craneLib = getCrane { withEmbedded = false; }; };
+        packages.portal-model = pkgs.callPackage ./portal-model { inherit pkgs; craneLib = getCrane { withEmbedded = false; }; };
         packages.sdk = pkgs.callPackage ./sdk { inherit pkgs; craneLib = getCrane { withEmbedded = false; }; };
 
         packages.firmware-development = pkgs.callPackage ./firmware rec {

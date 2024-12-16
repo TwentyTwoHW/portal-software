@@ -884,8 +884,8 @@ dependencies = [
  "handlebars",
  "image",
  "log",
- "model",
  "nt3h-emulator",
+ "portal-model",
  "rand 0.8.5",
  "sdk",
  "serde",
@@ -1203,7 +1203,7 @@ version = "0.1.0"
 dependencies = [
  "embedded-graphics",
  "embedded-graphics-simulator",
- "model",
+ "portal-model",
 ]
 
 [[package]]
@@ -1529,22 +1529,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "model"
-version = "0.1.0"
-dependencies = [
- "aes-gcm",
- "bip39",
- "bitcoin",
- "log",
- "minicbor",
- "modular-bitfield",
- "noise-protocol",
- "noise-rust-crypto",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "modular-bitfield"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1653,7 +1637,7 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "log",
- "model",
+ "portal-model",
  "sdk",
  "tokio",
 ]
@@ -1925,6 +1909,22 @@ dependencies = [
  "cpufeatures",
  "opaque-debug",
  "universal-hash",
+]
+
+[[package]]
+name = "portal-model"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "bip39",
+ "bitcoin",
+ "log",
+ "minicbor",
+ "modular-bitfield",
+ "noise-protocol",
+ "noise-rust-crypto",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -2210,9 +2210,9 @@ dependencies = [
  "futures",
  "log",
  "miniscript",
- "model",
  "nfc1",
  "pcsc",
+ "portal-model",
  "rand 0.8.5",
  "tokio",
  "uniffi",

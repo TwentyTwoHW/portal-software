@@ -13,7 +13,7 @@ jobs:
     - name: Print nixpkgs version
       run: nix-instantiate --eval -E '(import <nixpkgs> {}).lib.version'
     - run: nix build .#emulator
-    - run: nix build .#model
+    - run: nix build .#portal-model
     - run: nix build .#gui-simulator
     - run: nix build .#sdk
 
