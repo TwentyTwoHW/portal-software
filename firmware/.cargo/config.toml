@@ -8,7 +8,10 @@ rustflags = [
   # Use v0 symbol mangling style (https://rust-lang.github.io/rfcs/2603-rust-symbol-name-mangling-v0.html). This allows recovering the full monomorphized type from the symbol name
   "-C", "symbol-mangling-version=v0",
   "-C", "linker-plugin-lto",
-  "-C", "linker=clang-18",
+  "-C", "linker=clang-20",
+  "-C", "link-arg=-nostartfiles",
+  "-C", "link-arg=-nostdlib",
+  "-C", "link-arg=-Wl,--export-dynamic-symbol=_SEGGER_RTT",
   "-C", "link-arg=-flto",
   "-C", "link-arg=-fuse-ld=lld",
   "-C", "link-arg=--target=thumbv7em-none-eabihf"
@@ -26,6 +29,6 @@ run-wait-gdb = "run -- -S"
 
 [unstable]
 # Rebuild std from scratch
-build-std = ["std", "panic_abort"]
+build-std = ["core", "panic_abort", "alloc"]
 # Do not store panic strings
 build-std-features = ["panic_immediate_abort"]

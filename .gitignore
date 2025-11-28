@@ -12,3 +12,6 @@
 .cargo/git
 .cargo/registry
 .bash_history
+
+.envrc
+.direnv

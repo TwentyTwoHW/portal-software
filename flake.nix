@@ -3,15 +3,13 @@
 
   inputs = {
     nixpkgs.url      = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs-qemu.url      = "github:NixOS/nixpkgs/9f918d616c5321ad374ae6cb5ea89c9e04bf3e58";
     rust-overlay.url = "github:oxalica/rust-overlay";
     flake-utils.url  = "github:numtide/flake-utils";
-    crane = {
-      url = "github:ipetkov/crane";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    crane.url = "github:ipetkov/crane";
   };
 
-  outputs = { self, nixpkgs, rust-overlay, flake-utils, crane, ... }:
+  outputs = { self, nixpkgs, rust-overlay, flake-utils, crane, ... }@inputs:
     flake-utils.lib.eachDefaultSystem (system:
       let
         overlays = [ (import rust-overlay) ];
@@ -21,12 +19,12 @@
           config.android_sdk.accept_license = true;
           config.allowUnfree = true;
         };
-        rustVersion = "1.76.0";
+        rustVersion = "1.89.0";
         getRust =
           # fullAndroid implies withAndroid
           { fullAndroid ? false, withAndroid ? fullAndroid, withIos ? false, withEmbedded ? false, nightly ? false }:
           let
-            rs = if nightly then pkgs.rust-bin.nightly."2024-01-31" else pkgs.rust-bin.stable.${rustVersion};
+            rs = if nightly then pkgs.rust-bin.nightly."2025-08-01" else pkgs.rust-bin.stable.${rustVersion};
           in (rs.default.override {
             extensions = [
               "rust-src" # for rust-analyzer
@@ -75,8 +73,8 @@
           cmakeVersions = [ android.cmakeVersion ];
         };
 
-        defaultDeps = with pkgs; [ cmake SDL2 fltk pango rust-analyzer pkg-config libusb ];
-        embeddedDeps = with pkgs; [ probe-rs gcc-arm-embedded gdb openocd clang lld (getRust { withEmbedded = true; nightly = true; }) ];
+        defaultDeps = with pkgs; [ cmake SDL2 fltk pango rust-analyzer pkg-config libusb1 ];
+        embeddedDeps = with pkgs; [ probe-rs gcc-arm-embedded gdb openocd clang_20 lld_20 (getRust { withEmbedded = true; }) ];
         androidDeps = with pkgs; [ cargo-ndk jdk gnupg (getRust { fullAndroid = true; }) ];
         iosDeps = with pkgs; [ (getRust { withIos = true; }) ];
       in
@@ -84,14 +82,14 @@
 
         devShells.default = pkgs.mkShell {
           buildInputs = defaultDeps ++ [ rust ];
-          LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+          LIBCLANG_PATH = "${pkgs.llvmPackages_20.libclang.lib}/lib";
         };
         devShells.embedded = pkgs.mkShell {
           buildInputs = defaultDeps ++ embeddedDeps ++ [ packages.hal packages.qemuPortal ];
 
-          LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
-          CC_thumbv7em_none_eabihf = "clang-18";
-          CFLAGS_thumbv7em_none_eabihf = "-flto -fno-data-sections -fno-function-sections -fno-PIC -fno-stack-protector --target=thumbv7em-none-eabihf -mcpu=cortex-m4 -mthumb -I${pkgs.clang_17}/resource-root/include/ -I${pkgs.gcc-arm-embedded}/arm-none-eabi/include";
+          LIBCLANG_PATH = "${pkgs.llvmPackages_20.libclang.lib}/lib";
+          CC_thumbv7em_none_eabihf = "clang-20";
+          CFLAGS_thumbv7em_none_eabihf = "-flto -fno-data-sections -fno-function-sections -fno-PIC -fno-stack-protector --target=thumbv7em-none-eabihf -mcpu=cortex-m4 -mthumb -I${pkgs.clang_20}/resource-root/include/ -I${pkgs.gcc-arm-embedded}/arm-none-eabi/include";
         };
         devShells.android = pkgs.mkShell rec {
           buildInputs = defaultDeps ++ androidDeps;
@@ -125,7 +123,7 @@
             hash = "sha256-QOp7YM/R8mhDVbSaABGjRqqqHW288UYWHxezz5dUAwU=";
           };
 
-          cargoHash = "sha256-/+ld3zfyCpylEPUoGoOCBHiski2lle8QW+/zoW/PgmM=";
+          cargoHash = "sha256-alno3n0Xrw6BX3GZtgnws7UooJPBMS/hY/D0xIdin9c=";
 
           meta = with pkgs.lib; {
             description = "the Bitcoin companion";
@@ -136,7 +134,7 @@
         };
 
         packages.qemuPortal = let
-            qemu' = (pkgs.qemu.override { hostCpuTargets = ["arm-softmmu"]; }).overrideAttrs(old: rec {
+            qemu' = (inputs.nixpkgs-qemu.legacyPackages.${system}.qemu.override { hostCpuTargets = ["arm-softmmu"]; }).overrideAttrs(old: rec {
               version = "v9.0.0-portal.4";
               src = pkgs.fetchurl {
                 url = "https://github.com/TwentyTwoHW/qemu-portal/releases/download/${version}/qemu-${version}.tar.xz";

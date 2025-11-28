@@ -18,16 +18,21 @@
 use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::string::String;
+use alloc::vec::Vec;
+use tinyminiscript::descriptor::Descriptor;
 use core::cell::RefCell;
 use core::pin::Pin;
 
 use futures::pin_mut;
 use futures::prelude::*;
 
+use tinyminiscript::bitcoin::{bip32, secp256k1, Network};
+
 use gui::{ConfirmBarPage, ErrorPage, MainContent, Page};
-use model::bitcoin::bip32;
 use model::{FwUpdateHeader, NumWordsMnemonic, Reply};
 
+use crate::bitcoin_utils::SignerContext;
+use crate::bitcoin_utils::TransactionSigner;
 use crate::{checkpoint, hw, Error};
 
 #[allow(dead_code)]
@@ -38,20 +43,78 @@ pub mod fwupdate;
 pub mod idle;
 pub mod init;
 
+pub struct BitcoinWallet {
+    external: String,
+    internal: String,
+    network: Network,
+    secp: secp256k1::Secp256k1<secp256k1::All>,
+    signer: TransactionSigner,
+}
+
+impl BitcoinWallet {
+    pub fn new(
+        external: String,
+        internal: String,
+        signer: TransactionSigner,
+        network: Network,
+    ) -> Self {
+        let secp = secp256k1::Secp256k1::new();
+
+        BitcoinWallet {
+            external,
+            internal,
+            network,
+            secp,
+            signer,
+        }
+    }
+
+    pub fn network(&self) -> Network {
+        self.network
+    }
+
+    pub fn secp_ctx(&self) -> &secp256k1::Secp256k1<secp256k1::All> {
+        &self.secp
+    }
+
+    pub fn context(&self) -> SignerContext {
+        match self.external().descriptor() {
+            Descriptor::Bare => SignerContext::Legacy,
+            Descriptor::Pkh => SignerContext::Legacy,
+            Descriptor::Sh => SignerContext::Legacy,
+            Descriptor::Wpkh => SignerContext::Segwitv0,
+            Descriptor::Wsh => SignerContext::Segwitv0,
+            Descriptor::Tr => SignerContext::Tap { is_internal_key: true }, // TODO: fix this when implementing taproot
+        }
+    }
+
+    pub fn external<'a>(&'a self) -> tinyminiscript::parser::ParserContext<'a> {
+        tinyminiscript::parser::parse(&self.external).map_err(|_| "Invalid descriptor").unwrap()
+    }
+
+    pub fn internal<'a>(&'a self) -> tinyminiscript::parser::ParserContext<'a> {
+        tinyminiscript::parser::parse(&self.internal).map_err(|_| "Invalid descriptor").unwrap()
+    }
+
+    pub fn signer(&self) -> &TransactionSigner {
+        &self.signer
+    }
+}
+
 pub struct PortalWallet {
-    pub bdk: bdk_wallet::Wallet,
+    pub bdk: BitcoinWallet,
     pub xprv: bip32::Xpriv,
     pub config: model::UnlockedConfig,
 }
 
 impl PortalWallet {
-    pub fn new(bdk: bdk_wallet::Wallet, xprv: bip32::Xpriv, config: model::UnlockedConfig) -> Self {
+    pub fn new(bdk: BitcoinWallet, xprv: bip32::Xpriv, config: model::UnlockedConfig) -> Self {
         PortalWallet { bdk, xprv, config }
     }
 }
 
 impl core::ops::Deref for PortalWallet {
-    type Target = bdk_wallet::Wallet;
+    type Target = BitcoinWallet;
     fn deref(&self) -> &Self::Target {
         &self.bdk
     }
@@ -74,13 +137,13 @@ pub enum CurrentState {
     /// Generating seed
     GenerateSeed {
         num_words: NumWordsMnemonic,
-        network: bdk_wallet::bitcoin::Network,
+        network: tinyminiscript::bitcoin::Network,
         password: Option<String>,
     },
     /// Importing seed
     ImportSeed {
         mnemonic: String,
-        network: bdk_wallet::bitcoin::Network,
+        network: tinyminiscript::bitcoin::Network,
         password: Option<String>,
     },
     /// Show mnemonic on display

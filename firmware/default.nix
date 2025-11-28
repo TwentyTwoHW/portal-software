@@ -27,15 +27,15 @@ let
       pkgs.git
       pkgs.cmake
       pkgs.gcc-arm-embedded
-      pkgs.clang
-      pkgs.lld
+      pkgs.clang_20
+      pkgs.lld_20
     ];
 
     cargoVendorDir = craneLib.vendorMultipleCargoDeps {
       inherit (craneLib.findCargoFiles src) cargoConfigs;
       cargoLockList = [
         ./Cargo.lock
-        "${rustToolchain.passthru.availableComponents.rust-src}/lib/rustlib/src/rust/Cargo.lock"
+        "${rustToolchain.passthru.availableComponents.rust-src}/lib/rustlib/src/rust/library/Cargo.lock"
       ];
     };
 
@@ -47,9 +47,9 @@ let
     '';
     # strictDeps = true;
 
-    cargoExtraArgs = "-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort --target thumbv7em-none-eabihf --no-default-features --features=device,${features} -v";
-    CC_thumbv7em_none_eabihf = "clang-18";
-    CFLAGS_thumbv7em_none_eabihf = "-flto -fno-data-sections -fno-function-sections -fno-PIC -fno-stack-protector --target=thumbv7em-none-eabihf -mcpu=cortex-m4 -mthumb -I${pkgs.clang_18}/resource-root/include/ -I${pkgs.gcc-arm-embedded}/arm-none-eabi/include";
+    cargoExtraArgs = "-Z build-std=core,panic_abort,alloc -Z build-std-features=panic_immediate_abort --target thumbv7em-none-eabihf --no-default-features --features=device,${features} -v";
+    CC_thumbv7em_none_eabihf = "clang-20";
+    CFLAGS_thumbv7em_none_eabihf = "-flto -fno-data-sections -fno-function-sections -fno-PIC -fno-stack-protector --target=thumbv7em-none-eabihf -mcpu=cortex-m4 -mthumb -I${pkgs.clang_20}/resource-root/include/ -I${pkgs.gcc-arm-embedded}/arm-none-eabi/include";
   };
   
   # Don't actually build the dummy lib beacuse we can't link without a custom linker script

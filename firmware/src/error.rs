@@ -77,8 +77,8 @@ impl From<display_interface::DisplayError> for Error {
 //         Error::Wallet
 //     }
 // }
-impl From<bdk_wallet::descriptor::DescriptorError> for Error {
-    fn from(_: bdk_wallet::descriptor::DescriptorError) -> Self {
-        Error::Wallet
-    }
-}
+// impl From<bdk_wallet::descriptor::DescriptorError> for Error {
+//     fn from(_: bdk_wallet::descriptor::DescriptorError) -> Self {
+//         Error::Wallet
+//     }
+// }

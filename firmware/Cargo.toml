@@ -23,7 +23,10 @@ rand_chacha = { version = "0.3", default-features = false }
 log = "0.4"
 futures = { version = "0.3", default-features = false, features = ["async-await"] }
 bitcoin = { version = "0.32", default-features = false, features = ["secp-recovery"] }
-bdk_wallet = { git = "https://github.com/afilini/bdk.git", rev = "369ff991f4e6624dd4705cada786259888407c8f", default-features = false, features = ["keys-bip39"] }
+# bdk_wallet = { git = "https://github.com/afilini/bdk.git", rev = "369ff991f4e6624dd4705cada786259888407c8f", default-features = false, features = ["keys-bip39"] }
+# tinyminiscript = { path = "../../../nostrauth/tinyminiscript", default-features = false, features = ["debug"] }
+tinyminiscript = { git = "https://github.com/afilini/tinyminiscript.git", rev = "89c2d68b5a3d7795184163c92a3bdae9b4e092f0", default-features = false }
+bip39 = { version = "2.0", default-features = false }
 bitcoin_hashes = { version = "0.14.0", default-features = false, features = ["small-hash"] }
 secp256k1 = { version = "0.29", default-features = false, features = ["alloc", "lowmemory"] }
 fetch-git-hash = { path = "../fetch-git-hash" }
@@ -77,6 +80,5 @@ debug = true
 inherits = "release"
 
 [patch.crates-io]
-miniscript = { git = "https://github.com/afilini/rust-miniscript.git", rev = "fbc027206d66da448ebe548cf556b526019d0456" }
 # Use bitcoin-hashes 0.14 to save space
 bip39 = { git = "https://github.com/afilini/rust-bip39.git", rev = "e8e4aea8238a5527a64eafa2b1073e22b822188f" }

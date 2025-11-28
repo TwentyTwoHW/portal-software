@@ -27,6 +27,7 @@ extern crate embedded_hal as ehal;
 
 extern crate stm32l4xx_hal as hal;
 
+mod bitcoin_utils;
 mod checkpoint;
 mod config;
 mod error;
