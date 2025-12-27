@@ -23,10 +23,15 @@ rand_chacha = { version = "0.3", default-features = false }
 log = "0.4"
 futures = { version = "0.3", default-features = false, features = ["async-await"] }
 bitcoin = { version = "0.32", default-features = false, features = ["secp-recovery"] }
-bdk_wallet = { git = "https://github.com/afilini/bdk.git", rev = "369ff991f4e6624dd4705cada786259888407c8f", default-features = false, features = ["keys-bip39"] }
+# bdk_wallet = { git = "https://github.com/afilini/bdk.git", rev = "369ff991f4e6624dd4705cada786259888407c8f", default-features = false, features = ["keys-bip39"] }
+# tinyminiscript = { path = "../../../nostrauth/tinyminiscript", default-features = false }
+tinyminiscript = { git = "https://github.com/afilini/tinyminiscript.git", rev = "40d5fe075f92e45b8b0fbc292aa59799295582a8", default-features = false }
+bip39 = { version = "2.0", default-features = false }
 bitcoin_hashes = { version = "0.14.0", default-features = false, features = ["small-hash"] }
 secp256k1 = { version = "0.29", default-features = false, features = ["alloc", "lowmemory"] }
 fetch-git-hash = { path = "../fetch-git-hash" }
+dnssec-prover = { version = "0.6.8", default-features = false, features = ["validation", "slower_smaller_binary"] }
+bip21 = "0.5.0"
 
 model = { package="portal-model", path = "../portal-model", features = ["stm32"] }
 gui = { path = "../gui", features = ["stm32"] }
@@ -77,6 +82,5 @@ debug = true
 inherits = "release"
 
 [patch.crates-io]
-miniscript = { git = "https://github.com/afilini/rust-miniscript.git", rev = "fbc027206d66da448ebe548cf556b526019d0456" }
 # Use bitcoin-hashes 0.14 to save space
 bip39 = { git = "https://github.com/afilini/rust-bip39.git", rev = "e8e4aea8238a5527a64eafa2b1073e22b822188f" }

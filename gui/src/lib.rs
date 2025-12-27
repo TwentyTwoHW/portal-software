@@ -26,7 +26,7 @@ use embedded_graphics::prelude::*;
 use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use embedded_graphics::text::{Alignment, Baseline, Text, TextStyleBuilder};
 
-use model::bitcoin::{Address, Amount, Denomination};
+use model::bitcoin::{Amount, Denomination};
 
 const AMOUNT_Y_OFFSET: i32 = 6;
 
@@ -473,7 +473,7 @@ impl<'s, const FACTOR: usize, const WAIT_TIME: usize, const MAX_CHARS: usize>
 }
 
 pub struct TxOutputPageContent<'s> {
-    address: &'s Address,
+    address: &'s str,
     value: Amount,
     iteration: usize,
 }
@@ -544,7 +544,7 @@ impl_wrapper_page!(
     ConfirmBarPage<'static, TxOutputPageContent<'s>>
 );
 impl<'s> TxOutputPage<'s> {
-    pub fn new(address: &'s Address, value: Amount) -> Self {
+    pub fn new(address: &'s str, value: Amount) -> Self {
         TxOutputPage(ConfirmBarPage::new(
             50,
             TxOutputPageContent {

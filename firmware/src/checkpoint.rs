@@ -452,9 +452,17 @@ impl core::ops::Deref for CborAddress {
 }
 
 #[derive(Debug, minicbor::Encode, minicbor::Decode)]
+pub enum DisplayAddress {
+    #[cbor(n(0))]
+    Address(#[cbor(n(0))] CborAddress),
+    #[cbor(n(1))]
+    BIP353(#[cbor(n(0))] alloc::string::String),
+}
+
+#[derive(Debug, minicbor::Encode, minicbor::Decode)]
 pub struct SignPsbtState {
     #[cbor(n(0))]
-    pub outputs: alloc::vec::Vec<(CborAddress, u64)>,
+    pub outputs: alloc::vec::Vec<(DisplayAddress, u64)>,
     #[cbor(n(1))]
     pub fees: u64,
     #[cbor(n(2))]

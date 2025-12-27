@@ -121,7 +121,7 @@ async fn main() -> Result<(), emulator::Error> {
             "build",
             "--no-default-features",
             "--features",
-            "device",
+            "device,device-qemu,panic-log",
             "--release",
         ];
         log::debug!("Cardo build args: {:?}", cmd_args);
